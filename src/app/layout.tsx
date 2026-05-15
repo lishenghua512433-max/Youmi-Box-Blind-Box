@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'YouMiBox - BSC NFT Blind Box',
-  description: 'Unbox treasures, high-tier collectibles auto-recycled for steady gains, invite friends to earn commissions',
+  title: 'Youmi Box Blind Box - BSC NFT Blind Box',
+  description: 'Youmi Box Blind Box, get rare collections easily, gain stable profits & earn commission by inviting friends',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -3,8 +3,8 @@ export type Lang = 'en' | 'zh';
 export const i18n: Record<Lang, Record<string, string>> = {
   en: {
     // Header
-    'app.title': 'YouMiBox',
-    'app.subtitle': 'Unbox treasures, high-tier collectibles auto-recycled for steady gains, invite friends to earn commissions',
+    'app.title': 'Youmi Box Blind Box',
+    'app.subtitle': 'Youmi Box Blind Box, get rare collections easily, gain stable profits & earn commission by inviting friends',
     'nav.blindbox': 'Blind Box',
     'nav.inventory': 'My Collection',
     'nav.referral': 'Invitation',
@@ -82,7 +82,7 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'referral.history': 'Commission History',
 
     // Footer
-    'footer.copyright': '© 2025 YouMiBox. All rights reserved.',
+    'footer.copyright': '© 2025 Youmi Box Blind Box. All rights reserved.',
 
     // Common
     'common.confirm': 'Confirm',
@@ -107,8 +107,8 @@ export const i18n: Record<Lang, Record<string, string>> = {
   },
   zh: {
     // Header
-    'app.title': '优秘盒',
-    'app.subtitle': '优秘盒开箱夺珍，高阶藏品高价回收稳赚收益，邀友组队轻松赚取推广佣金',
+    'app.title': '优秘盒盲盒',
+    'app.subtitle': '优秘盒盲盒，开箱得臻藏好物，高阶藏品高价回收稳赚收益，邀请好友躺赚多级佣金',
     'nav.blindbox': '盲盒',
     'nav.inventory': '我的藏品',
     'nav.referral': '邀请返佣',
@@ -186,7 +186,7 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'referral.history': '佣金记录',
 
     // Footer
-    'footer.copyright': '© 2025 优秘盒 版权所有',
+    'footer.copyright': '© 2025 优秘盒盲盒 版权所有',
 
     // Common
     'common.confirm': '确认',
