@@ -1,6 +1,8 @@
 # DESIGN.md
 
-## Design Tokens
+## 品牌与视觉方向
+- 全站统一命名：优秘盒 (YouMiBox)
+- 首页仅展示品牌名+简短宣传文案，不展示品级预览卡片
 ### 色彩
 - 主色：紫色系（blind box 主题） + 暗色背景
 - 品级色系：Normal-灰、Rare-蓝、Epic-紫、Legend-金、Myth-红

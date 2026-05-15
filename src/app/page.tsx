@@ -375,25 +375,15 @@ export default function HomePage() {
         {!wallet ? (
           /* Not Connected - Landing */
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="mb-8 rounded-2xl bg-gradient-to-br from-amber-500/20 to-purple-500/20 p-8 border border-amber-500/20">
-              <Box className="mx-auto mb-4 h-20 w-20 text-amber-400 animate-bounce" />
+            <div className="mb-6 rounded-2xl bg-gradient-to-br from-amber-500/20 to-purple-500/20 p-6 border border-amber-500/20">
+              <Box className="h-16 w-16 text-amber-400 animate-bounce" />
             </div>
-            <h1 className="mb-3 text-4xl font-bold text-white md:text-5xl">{t('app.title')}</h1>
-            <p className="mb-8 text-lg text-gray-400">{t('app.subtitle')}</p>
+            <h1 className="mb-4 text-4xl font-bold text-white md:text-5xl tracking-tight">{t('app.title')}</h1>
+            <p className="mb-8 text-base text-gray-400 max-w-md leading-relaxed">{t('app.subtitle')}</p>
             <Button size="lg" onClick={handleConnect} className="bg-amber-500 hover:bg-amber-600 text-black font-bold text-lg px-8 py-6 rounded-xl">
               <Wallet className="mr-2 h-5 w-5" />
               {t('nav.connect')}
             </Button>
-            <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl">
-              {['normal', 'rare', 'epic', 'legend'].map((r) => (
-                <div key={r} className="flex flex-col items-center gap-1 rounded-xl bg-white/5 p-3 border border-white/10">
-                  <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${RARITY_COLORS[r]} flex items-center justify-center text-white text-lg`}>
-                    {r === 'normal' ? '⬜' : r === 'rare' ? '💎' : r === 'epic' ? '🔮' : '🏆'}
-                  </div>
-                  <span className="text-xs text-gray-400">{t(`blindbox.rarity.${r}`)}</span>
-                </div>
-              ))}
-            </div>
           </div>
         ) : (
           /* Connected - Tabs */

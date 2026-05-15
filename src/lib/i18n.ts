@@ -3,8 +3,8 @@ export type Lang = 'en' | 'zh';
 export const i18n: Record<Lang, Record<string, string>> = {
   en: {
     // Header
-    'app.title': 'Mystery Box',
-    'app.subtitle': 'BSC NFT Blind Box Platform',
+    'app.title': 'YouMiBox',
+    'app.subtitle': 'Unbox treasures, high-tier collectibles auto-recycled for steady gains, invite friends to earn commissions',
     'nav.blindbox': 'Blind Box',
     'nav.inventory': 'My Collection',
     'nav.referral': 'Invitation',
@@ -82,7 +82,7 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'referral.history': 'Commission History',
 
     // Footer
-    'footer.copyright': '© 2025 Mystery Box. All rights reserved.',
+    'footer.copyright': '© 2025 YouMiBox. All rights reserved.',
 
     // Common
     'common.confirm': 'Confirm',
@@ -107,8 +107,8 @@ export const i18n: Record<Lang, Record<string, string>> = {
   },
   zh: {
     // Header
-    'app.title': '盲盒',
-    'app.subtitle': 'BSC NFT 盲盒平台',
+    'app.title': '优秘盒',
+    'app.subtitle': '优秘盒开箱夺珍，高阶藏品高价回收稳赚收益，邀友组队轻松赚取推广佣金',
     'nav.blindbox': '盲盒',
     'nav.inventory': '我的藏品',
     'nav.referral': '邀请返佣',
@@ -186,7 +186,7 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'referral.history': '佣金记录',
 
     // Footer
-    'footer.copyright': '© 2025 盲盒平台 版权所有',
+    'footer.copyright': '© 2025 优秘盒 版权所有',
 
     // Common
     'common.confirm': '确认',
