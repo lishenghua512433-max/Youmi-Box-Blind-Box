@@ -89,5 +89,9 @@ export const transactions = pgTable('transactions', {
   feeAmount: numeric('fee_amount', { precision: 18, scale: 8 }).notNull().default('0'),
   nftId: integer('nft_id'),
   relatedWallet: varchar('related_wallet', { length: 66 }),
+  txHash: varchar('tx_hash', { length: 128 }),
+  quantity: integer('quantity').notNull().default(1),
+  receiveAmount: numeric('receive_amount', { precision: 18, scale: 8 }).notNull().default('0'),
+  status: varchar('status', { length: 20 }).notNull().default('completed'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });

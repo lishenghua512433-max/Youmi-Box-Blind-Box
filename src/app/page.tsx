@@ -20,7 +20,7 @@ const RARITY_BG: Record<string, string> = {
   shenpin: 'bg-red-500/10',
 };
 
-type Tab = 'blindbox' | 'inventory' | 'market' | 'referral';
+type Tab = 'blindbox' | 'inventory' | 'market' | 'referral' | 'history';
 
 interface Settings {
   price_usdt: string;
@@ -112,11 +112,22 @@ export default function HomePage() {
     } catch { /* ignore */ }
   }, [wallet]);
 
+  const [txHistory, setTxHistory] = useState<Array<Record<string, unknown>>>([]);
+  const loadTransactions = async () => {
+    if (!wallet) return;
+    try {
+      const res = await fetch(`/api/transactions?wallet=${wallet}`);
+      const json = await res.json();
+      if (json.success) setTxHistory(json.data || []);
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { loadSettings(); loadImages(); }, [loadSettings, loadImages]);
   useEffect(() => { if (wallet) loadInventory(); }, [wallet, loadInventory]);
   useEffect(() => { if (tab === 'market') loadMarket(); }, [tab, loadMarket]);
   useEffect(() => { if (tab === 'referral' && wallet) loadReferral(); }, [tab, wallet, loadReferral]);
+  useEffect(() => { if (tab === 'history' && wallet) loadTransactions(); }, [tab, wallet]);
 
   const handleConnect = async () => {
     const addr = await connectWallet();
@@ -284,7 +295,7 @@ export default function HomePage() {
       {/* Tabs */}
       <nav className="max-w-lg mx-auto px-4 mt-4">
         <div className="flex gap-1 bg-white/5 rounded-xl p-1">
-          {(['blindbox', 'inventory', 'market', 'referral'] as Tab[]).map((tb) => (
+          {(['blindbox', 'inventory', 'market', 'referral', 'history'] as Tab[]).map((tb) => (
             <button key={tb} onClick={() => setTab(tb)} className={`flex-1 py-2 text-xs font-medium rounded-lg transition ${tab === tb ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}>{t(`nav.${tb}`, lang)}</button>
           ))}
         </div>
@@ -559,6 +570,63 @@ export default function HomePage() {
               </>
             ) : (
               <div className="text-center py-12 text-gray-500">{t('common.loading', lang)}</div>
+            )}
+          </div>
+        )}
+
+        {/* ===== HISTORY TAB ===== */}
+        {tab === 'history' && (
+          <div className="space-y-3">
+            {!wallet ? (
+              <div className="text-center py-12 text-gray-500">{t('nav.connect', lang)}</div>
+            ) : txHistory.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">{t('history.empty', lang)}</div>
+            ) : (
+              txHistory.map((tx: Record<string, unknown>, i: number) => {
+                const type = tx.type as string;
+                const isBuyBlindbox = type === 'buy_blindbox';
+                const showFee = !isBuyBlindbox && Number(tx.fee_amount || 0) > 0;
+                return (
+                  <div key={i} className="bg-white/5 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <span className="text-sm font-medium text-purple-300">{t(`history.type.${type}`, lang)}</span>
+                      <span className="text-[10px] text-gray-500">{new Date(tx.created_at as string).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US')}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="text-gray-500">{t('history.amount', lang)}</div>
+                      <div className="text-right text-white">{tx.amount as string} {tx.currency as string}</div>
+                      {Number(tx.quantity || 0) > 1 && (
+                        <>
+                          <div className="text-gray-500">{t('history.quantity', lang)}</div>
+                          <div className="text-right text-white">{tx.quantity as number}</div>
+                        </>
+                      )}
+                      {showFee && (
+                        <>
+                          <div className="text-gray-500">{t('history.fee', lang)}</div>
+                          <div className="text-right text-red-400">-{tx.fee_amount as string} {tx.currency as string}</div>
+                        </>
+                      )}
+                      {Number(tx.receive_amount || 0) > 0 && (
+                        <>
+                          <div className="text-gray-500">{t('history.receive', lang)}</div>
+                          <div className="text-right text-green-400">+{tx.receive_amount as string} {tx.currency as string}</div>
+                        </>
+                      )}
+                      <div className="text-gray-500">{t('history.status', lang)}</div>
+                      <div className="text-right">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] ${(tx.status as string) === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{t(`history.status.${tx.status as string}`, lang)}</span>
+                      </div>
+                      {(tx.related_wallet as string) && (
+                        <>
+                          <div className="text-gray-500">{t('history.related', lang)}</div>
+                          <div className="text-right text-gray-400 font-mono text-[10px]">{(tx.related_wallet as string).slice(0, 8)}...{(tx.related_wallet as string).slice(-6)}</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         )}

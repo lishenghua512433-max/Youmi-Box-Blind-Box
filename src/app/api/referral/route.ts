@@ -98,6 +98,9 @@ export async function POST(request: Request) {
       amount: balance.toFixed(8),
       currency: 'USDT',
       fee_amount: feeAmount,
+      receive_amount: receiveAmount,
+      quantity: 1,
+      status: 'completed',
     });
 
     return NextResponse.json({

@@ -67,7 +67,10 @@ export async function POST(request: Request) {
         amount: recyclePrice.toFixed(8),
         currency: 'USDT',
         fee_amount: feeAmount,
+        receive_amount: receiveAmount,
+        quantity: 1,
         nft_id,
+        status: 'completed',
       });
 
       return NextResponse.json({
@@ -119,8 +122,11 @@ export async function POST(request: Request) {
         amount: '0',
         currency: 'USDT',
         fee_amount: '0',
+        receive_amount: '0',
+        quantity: 1,
         nft_id,
         related_wallet: giftTo,
+        status: 'completed',
       });
 
       return NextResponse.json({ success: true, data: { nft_id, from: wallet, to: giftTo } });

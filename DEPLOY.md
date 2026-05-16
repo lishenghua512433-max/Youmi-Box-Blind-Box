@@ -113,35 +113,30 @@ Supabase 是免费云数据库服务，提供 PostgreSQL 数据库。
 -- 1. 管理员设置表（全局配置，仅一条记录）
 CREATE TABLE IF NOT EXISTS admin_settings (
   id INTEGER PRIMARY KEY DEFAULT 1,
-  price_bnb NUMERIC(18,8) NOT NULL DEFAULT '0.1',
-  price_usdt NUMERIC(18,8) NOT NULL DEFAULT '50',
-  price_busd NUMERIC(18,8) NOT NULL DEFAULT '50',
-  price_usdc NUMERIC(18,8) NOT NULL DEFAULT '50',
-  price_sol NUMERIC(18,8) NOT NULL DEFAULT '0.3',
-  price_doge NUMERIC(18,8) NOT NULL DEFAULT '300',
-  buy_fee_rate NUMERIC(5,2) NOT NULL DEFAULT '5',
-  sell_fee_rate NUMERIC(5,2) NOT NULL DEFAULT '5',
+  price_usdt NUMERIC(18,8) NOT NULL DEFAULT '3',
+  prob_fanpin NUMERIC(5,2) NOT NULL DEFAULT '71',
+  prob_lingpin NUMERIC(5,2) NOT NULL DEFAULT '22',
+  prob_xuanpin NUMERIC(5,2) NOT NULL DEFAULT '5.5',
+  prob_xianpin NUMERIC(5,2) NOT NULL DEFAULT '1.2',
+  prob_shenpin NUMERIC(5,2) NOT NULL DEFAULT '0.3',
+  recycle_fanpin NUMERIC(18,8) NOT NULL DEFAULT '2.7',
+  recycle_lingpin NUMERIC(18,8) NOT NULL DEFAULT '2.9',
+  recycle_xuanpin NUMERIC(18,8) NOT NULL DEFAULT '3.3',
+  recycle_xianpin NUMERIC(18,8) NOT NULL DEFAULT '4.6',
+  recycle_shenpin NUMERIC(18,8) NOT NULL DEFAULT '12',
+  trade_fee_rate NUMERIC(5,2) NOT NULL DEFAULT '5',
+  recycle_fee_rate NUMERIC(5,2) NOT NULL DEFAULT '5',
   withdraw_fee_rate NUMERIC(5,2) NOT NULL DEFAULT '5',
-  recycle_normal NUMERIC(18,8) NOT NULL DEFAULT '10',
-  recycle_rare NUMERIC(18,8) NOT NULL DEFAULT '30',
-  recycle_epic NUMERIC(18,8) NOT NULL DEFAULT '80',
-  recycle_legend NUMERIC(18,8) NOT NULL DEFAULT '200',
-  recycle_myth NUMERIC(18,8) NOT NULL DEFAULT '500',
-  prob_normal NUMERIC(5,2) NOT NULL DEFAULT '50',
-  prob_rare NUMERIC(5,2) NOT NULL DEFAULT '25',
-  prob_epic NUMERIC(5,2) NOT NULL DEFAULT '15',
-  prob_legend NUMERIC(5,2) NOT NULL DEFAULT '8',
-  prob_myth NUMERIC(5,2) NOT NULL DEFAULT '2',
-  commission_l1 NUMERIC(5,2) NOT NULL DEFAULT '10',
-  commission_l2 NUMERIC(5,2) NOT NULL DEFAULT '5',
-  commission_l3 NUMERIC(5,2) NOT NULL DEFAULT '2',
-  nft_contract_address VARCHAR(66) DEFAULT '',
-  payment_wallet_address VARCHAR(66) DEFAULT '',
+  commission_l1 NUMERIC(5,2) NOT NULL DEFAULT '4',
+  commission_l2 NUMERIC(5,2) NOT NULL DEFAULT '1',
+  referral_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  min_withdraw NUMERIC(18,8) NOT NULL DEFAULT '5',
+  collection_wallet VARCHAR(66) DEFAULT '',
+  payout_wallet VARCHAR(66) DEFAULT '',
   usdt_contract VARCHAR(66) DEFAULT '0x55d398326f99059fF775485246999027B3197955',
   busd_contract VARCHAR(66) DEFAULT '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
-  usdc_contract VARCHAR(66) DEFAULT '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
-  sol_contract VARCHAR(66) DEFAULT '0x570A5D26f7765Ecb712C0924E4De545B89fD43dD',
-  doge_contract VARCHAR(66) DEFAULT '0xba2ae424d960c26247dd6c32edc70b295c744c43',
+  trx_contract VARCHAR(66) DEFAULT '0x570A5D26f7765Ecb712C0924E4De545B89fD43dD',
+  nft_contract_address VARCHAR(66) DEFAULT '',
   admin_password VARCHAR(128) NOT NULL DEFAULT '123456',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
@@ -162,16 +157,10 @@ CREATE TABLE IF NOT EXISTS users (
   referral_code VARCHAR(20) NOT NULL UNIQUE,
   parent_code VARCHAR(20),
   parent_l2_code VARCHAR(20),
-  parent_l3_code VARCHAR(20),
-  commission_balance NUMERIC(18,8) NOT NULL DEFAULT '0',
-  total_commission NUMERIC(18,8) NOT NULL DEFAULT '0',
-  total_spent NUMERIC(18,8) NOT NULL DEFAULT '0',
-  total_boxes INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
 CREATE INDEX IF NOT EXISTS users_wallet_idx ON users(wallet_address);
 CREATE INDEX IF NOT EXISTS users_referral_idx ON users(referral_code);
-CREATE INDEX IF NOT EXISTS users_parent_code_idx ON users(parent_code);
 
 -- 4. NFT 藏品表
 CREATE TABLE IF NOT EXISTS nft_inventory (
@@ -181,24 +170,41 @@ CREATE TABLE IF NOT EXISTS nft_inventory (
   status VARCHAR(20) NOT NULL DEFAULT 'held',
   purchase_price NUMERIC(18,8) NOT NULL,
   purchase_currency VARCHAR(10) NOT NULL,
-  sold_price NUMERIC(18,8),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-  sold_at TIMESTAMP WITH TIME ZONE
+  sold_at TIMESTAMP WITH TIME ZONE,
+  gifted_to VARCHAR(66),
+  gifted_at TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX IF NOT EXISTS nft_inventory_wallet_idx ON nft_inventory(wallet_address);
 CREATE INDEX IF NOT EXISTS nft_inventory_status_idx ON nft_inventory(status);
-CREATE INDEX IF NOT EXISTS nft_inventory_rarity_idx ON nft_inventory(rarity);
 
--- 5. 交易记录表
+-- 5. 交易市场挂单表
+CREATE TABLE IF NOT EXISTS trade_listings (
+  id SERIAL PRIMARY KEY,
+  nft_id INTEGER NOT NULL REFERENCES nft_inventory(id),
+  seller_wallet VARCHAR(66) NOT NULL,
+  rarity VARCHAR(20) NOT NULL,
+  price NUMERIC(18,8) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  cancelled_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS trade_seller_idx ON trade_listings(seller_wallet);
+CREATE INDEX IF NOT EXISTS trade_status_idx ON trade_listings(status);
+
+-- 6. 交易记录表
 CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL PRIMARY KEY,
   wallet_address VARCHAR(66) NOT NULL,
   type VARCHAR(30) NOT NULL,
   amount NUMERIC(18,8) NOT NULL,
-  currency VARCHAR(10) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USDT',
   fee_amount NUMERIC(18,8) NOT NULL DEFAULT '0',
   nft_id INTEGER,
+  related_wallet VARCHAR(66),
   tx_hash VARCHAR(128),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  receive_amount NUMERIC(18,8) NOT NULL DEFAULT '0',
   status VARCHAR(20) NOT NULL DEFAULT 'completed',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
@@ -206,21 +212,35 @@ CREATE INDEX IF NOT EXISTS transactions_wallet_idx ON transactions(wallet_addres
 CREATE INDEX IF NOT EXISTS transactions_type_idx ON transactions(type);
 CREATE INDEX IF NOT EXISTS transactions_created_idx ON transactions(created_at);
 
--- 6. 佣金记录表
+-- 7. 佣金记录表
 CREATE TABLE IF NOT EXISTS commissions (
   id SERIAL PRIMARY KEY,
   wallet_address VARCHAR(66) NOT NULL,
   from_wallet VARCHAR(66) NOT NULL,
   level INTEGER NOT NULL,
   amount NUMERIC(18,8) NOT NULL,
-  currency VARCHAR(10) NOT NULL DEFAULT 'BNB',
-  source_tx_id INTEGER,
-  status VARCHAR(20) NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
 CREATE INDEX IF NOT EXISTS commissions_wallet_idx ON commissions(wallet_address);
-CREATE INDEX IF NOT EXISTS commissions_from_wallet_idx ON commissions(from_wallet);
-CREATE INDEX IF NOT EXISTS commissions_level_idx ON commissions(level);
+
+-- =============================================
+-- 开启 RLS + 允许全访问策略
+-- =============================================
+ALTER TABLE admin_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nft_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nft_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trade_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commissions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access on admin_settings" ON admin_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on nft_images" ON nft_images FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on users" ON users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on nft_inventory" ON nft_inventory FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on trade_listings" ON trade_listings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on commissions" ON commissions FOR ALL USING (true) WITH CHECK (true);
 
 -- =============================================
 -- 初始化默认数据
@@ -231,18 +251,18 @@ INSERT INTO admin_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- 插入默认 NFT 品级图片
 INSERT INTO nft_images (rarity, image_url) VALUES
-  ('normal', '/nft/normal.svg'),
-  ('rare', '/nft/rare.svg'),
-  ('epic', '/nft/epic.svg'),
-  ('legend', '/nft/legend.svg'),
-  ('myth', '/nft/myth.svg')
+  ('fanpin', '/nft/fanpin.svg'),
+  ('lingpin', '/nft/lingpin.svg'),
+  ('xuanpin', '/nft/xuanpin.svg'),
+  ('xianpin', '/nft/xianpin.svg'),
+  ('shenpin', '/nft/shenpin.svg')
 ON CONFLICT (rarity) DO NOTHING;
 ```
 
 ### 3.3 确认建表成功
 
 1. 点击左侧菜单 **Table Editor**
-2. 应该能看到 6 张表：`admin_settings`、`nft_images`、`users`、`nft_inventory`、`transactions`、`commissions`
+2. 应该能看到 7 张表：`admin_settings`、`nft_images`、`users`、`nft_inventory`、`trade_listings`、`transactions`、`commissions`
 3. 点击 `admin_settings` 表，应能看到 1 条默认记录
 4. 点击 `nft_images` 表，应能看到 5 条品级图片记录
 

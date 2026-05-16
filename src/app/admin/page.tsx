@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState('pricing');
+  const [allTx, setAllTx] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
     if (sessionStorage.getItem('admin_auth') === 'true') setAuthed(true);
@@ -64,6 +65,12 @@ export default function AdminPage() {
     const res = await fetch('/api/admin/stats');
     const json = await res.json();
     if (json.success) setStats(json.data);
+  }, []);
+
+  const loadAllTx = useCallback(async () => {
+    const res = await fetch('/api/transactions?limit=100');
+    const json = await res.json();
+    if (json.success) setAllTx(json.data);
   }, []);
 
   useEffect(() => {
@@ -138,6 +145,7 @@ export default function AdminPage() {
     { id: 'contracts', label: 'Contracts' },
     { id: 'images', label: 'NFT Images' },
     { id: 'stats', label: 'Statistics' },
+    { id: 'transactions', label: 'Transactions' },
   ];
 
   return (
@@ -333,6 +341,36 @@ export default function AdminPage() {
                       ))}
                     </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* ===== TRANSACTIONS SECTION ===== */}
+            {section === 'transactions' && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-sm font-medium text-gray-300">All Transactions</h3>
+                  <button onClick={loadAllTx} className="text-xs text-purple-400 hover:text-purple-300">Refresh</button>
+                </div>
+                {allTx.length === 0 ? (
+                  <p className="text-xs text-gray-500 text-center py-8">No transactions yet</p>
+                ) : (
+                  allTx.map((tx: Record<string, unknown>, i: number) => (
+                    <div key={i} className="bg-white/5 rounded-lg px-3 py-2 space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-medium text-purple-300">{String(tx.type)}</span>
+                        <span className="text-[10px] text-gray-500">{new Date(tx.created_at as string).toLocaleString()}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
+                        <span className="text-gray-400">Wallet: <span className="text-gray-300 font-mono">{(tx.wallet_address as string).slice(0, 8)}...{(tx.wallet_address as string).slice(-4)}</span></span>
+                        <span className="text-gray-400">Amt: <span className="text-white">{String(tx.amount)} {String(tx.currency)}</span></span>
+                        {Number(tx.quantity || 0) > 1 && <span className="text-gray-400">Qty: <span className="text-white">{String(tx.quantity)}</span></span>}
+                        {Number(tx.fee_amount || 0) > 0 && <span className="text-gray-400">Fee: <span className="text-red-400">{String(tx.fee_amount)}</span></span>}
+                        {Number(tx.receive_amount || 0) > 0 && <span className="text-gray-400">Recv: <span className="text-green-400">{String(tx.receive_amount)}</span></span>}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${String(tx.status) === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{String(tx.status)}</span>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             )}

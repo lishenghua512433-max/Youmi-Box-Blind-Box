@@ -61,8 +61,11 @@ export async function POST(request: Request) {
       amount: price.toFixed(8),
       currency: 'USDT',
       fee_amount: buyerFee,
+      receive_amount: '0',
+      quantity: 1,
       nft_id: listing.nft_id,
       related_wallet: listing.seller_wallet,
+      status: 'completed',
     });
 
     // Record seller transaction
@@ -72,8 +75,11 @@ export async function POST(request: Request) {
       amount: price.toFixed(8),
       currency: 'USDT',
       fee_amount: sellerFee,
+      receive_amount: sellerReceive,
+      quantity: 1,
       nft_id: listing.nft_id,
       related_wallet: buyer_wallet,
+      status: 'completed',
     });
 
     return NextResponse.json({

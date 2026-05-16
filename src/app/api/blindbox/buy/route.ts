@@ -90,15 +90,19 @@ export async function POST(request: Request) {
     }
 
     // Create transaction record (no fee for blind box purchase)
-    await client.from('transactions').insert({
+    const txResult = await client.from('transactions').insert({
       wallet_address: wallet,
       type: 'buy_blindbox',
       amount: totalPrice.toFixed(8),
       currency: currency.toUpperCase(),
       fee_amount: '0',
+      receive_amount: '0',
+      quantity: quantity,
       nft_id: results[0].nftId,
       tx_hash: tx_hash || null,
+      status: 'completed',
     });
+    if (txResult.error) console.error('Transaction insert error:', txResult.error.message);
 
     // Distribute commissions (only 2 levels, only from direct referral purchases, not self)
     if (!user) throw new Error('User not found');
