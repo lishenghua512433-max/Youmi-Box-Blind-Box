@@ -7,11 +7,16 @@ import { ethers } from 'ethers';
 // - Token transfers with correct decimals
 // ============================================================
 
-// BSC Mainnet RPC
+// ============================================================
+// Security: Private keys are ONLY read from server environment variables.
+// Never hardcoded, never committed to repo, never exposed to frontend.
+// ============================================================
+
+// BSC Mainnet RPC (server-side only)
 const BSC_RPC = process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
 
-// Payout wallet private key (NEVER store in database)
-const PAYOUT_PRIVATE_KEY = process.env.PAYOUT_WALLET_PRIVATE_KEY || '';
+// Payout wallet private key — ONLY from env, NEVER from database or frontend
+const PAYOUT_PRIVATE_KEY = process.env.PAYOUT_PRIVATE_KEY || '';
 
 // Token decimals on BSC chain
 const TOKEN_DECIMALS: Record<string, number> = {
@@ -33,16 +38,21 @@ function getProvider(): ethers.JsonRpcProvider {
   return new ethers.JsonRpcProvider(BSC_RPC);
 }
 
-// Get signer from payout wallet private key
+// Get signer from payout wallet private key (server env only)
 function getPayoutSigner(): ethers.Wallet {
   if (!PAYOUT_PRIVATE_KEY) {
-    throw new Error('PAYOUT_WALLET_PRIVATE_KEY not configured in environment');
+    throw new Error('PAYOUT_PRIVATE_KEY not configured in server environment variables');
+  }
+  // Validate private key format (must be 0x + 64 hex chars or 64 hex chars)
+  const cleanKey = PAYOUT_PRIVATE_KEY.startsWith('0x') ? PAYOUT_PRIVATE_KEY.slice(2) : PAYOUT_PRIVATE_KEY;
+  if (!/^[0-9a-fA-F]{64}$/.test(cleanKey)) {
+    throw new Error('PAYOUT_PRIVATE_KEY format invalid — must be 64 hex characters');
   }
   const provider = getProvider();
   return new ethers.Wallet(PAYOUT_PRIVATE_KEY, provider);
 }
 
-// Get payout wallet address
+// Get payout wallet address (derived from private key, never returns the key itself)
 export function getPayoutWalletAddress(): string | null {
   if (!PAYOUT_PRIVATE_KEY) return null;
   try {

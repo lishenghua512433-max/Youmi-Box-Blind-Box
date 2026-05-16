@@ -17,12 +17,14 @@ coverage/
 *.lcov
 .nyc_output
 
-# Environment variables
+# Environment variables (NEVER commit — contains private keys)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.local
+**/.env.local
 
 # Logs
 logs/
