@@ -1,808 +1,564 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { i18n, type Lang } from '@/lib/i18n';
-import { connectWallet, switchToBSC, isBSCNetwork, sendBNB, sendERC20 } from '@/lib/web3';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from 'sonner';
-import { Toaster } from '@/components/ui/sonner';
-import {
-  Gift, Wallet, Users, Globe, Copy, ArrowRight,
-  Sparkles, Shield, Coins, ChevronDown, ExternalLink,
-  CheckCircle, AlertCircle, Loader2, Box, LogOut, Eye, EyeOff
-} from 'lucide-react';
+import { i18n, Lang, t } from '@/lib/i18n';
+import { connectWallet, isBSCNetwork, switchToBSC, sendPayment, CURRENCIES, Currency, CURRENCY_DECIMALS } from '@/lib/web3';
 
-// Types
-interface Settings {
-  id: number;
-  price_bnb: string; price_usdt: string; price_busd: string;
-  price_usdc: string; price_sol: string; price_doge: string;
-  buy_fee_rate: string; sell_fee_rate: string; withdraw_fee_rate: string;
-  recycle_normal: string; recycle_rare: string; recycle_epic: string;
-  recycle_legend: string; recycle_myth: string;
-  prob_normal: string; prob_rare: string; prob_epic: string;
-  prob_legend: string; prob_myth: string;
-  commission_l1: string; commission_l2: string; commission_l3: string;
-  nft_contract_address: string; payment_wallet_address: string;
-  usdt_contract: string; busd_contract: string; usdc_contract: string;
-  sol_contract: string; doge_contract: string;
-}
-
-interface NFTImage { rarity: string; image_url: string; }
-
-interface NFTItem {
-  id: number; wallet_address: string; rarity: string; status: string;
-  purchase_price: string; purchase_currency: string; sold_price: string | null;
-  created_at: string; sold_at: string | null;
-}
-
-interface UserInfo {
-  wallet_address: string; referral_code: string; parent_code: string | null;
-  commission_balance: string; total_commission: string;
-  total_spent: string; total_boxes: number;
-}
-
-interface CommissionItem {
-  id: number; from_wallet: string; level: number;
-  amount: string; created_at: string;
-}
-
-const CURRENCIES = ['BNB', 'USDT', 'BUSD', 'USDC', 'SOL', 'DOGE'] as const;
-type Currency = typeof CURRENCIES[number];
-
+const RARITIES = ['fanpin', 'lingpin', 'xuanpin', 'xianpin', 'shenpin'] as const;
 const RARITY_COLORS: Record<string, string> = {
-  normal: 'from-gray-500 to-gray-600',
-  rare: 'from-blue-500 to-blue-600',
-  epic: 'from-purple-500 to-purple-600',
-  legend: 'from-amber-500 to-amber-600',
-  myth: 'from-red-500 to-orange-500',
+  fanpin: 'text-gray-400 border-gray-500',
+  lingpin: 'text-blue-400 border-blue-500',
+  xuanpin: 'text-purple-400 border-purple-500',
+  xianpin: 'text-yellow-400 border-yellow-500',
+  shenpin: 'text-red-400 border-red-500',
+};
+const RARITY_BG: Record<string, string> = {
+  fanpin: 'bg-gray-500/10',
+  lingpin: 'bg-blue-500/10',
+  xuanpin: 'bg-purple-500/10',
+  xianpin: 'bg-yellow-500/10',
+  shenpin: 'bg-red-500/10',
 };
 
-const RARITY_BORDER: Record<string, string> = {
-  normal: 'border-gray-500/50',
-  rare: 'border-blue-500/50',
-  epic: 'border-purple-500/50',
-  legend: 'border-amber-500/50',
-  myth: 'border-red-500/50',
-};
+type Tab = 'blindbox' | 'inventory' | 'market' | 'referral';
 
-const RARITY_GLOW: Record<string, string> = {
-  normal: '',
-  rare: 'shadow-blue-500/20 shadow-lg',
-  epic: 'shadow-purple-500/20 shadow-lg',
-  legend: 'shadow-amber-500/30 shadow-xl',
-  myth: 'shadow-red-500/30 shadow-xl',
-};
+interface Settings {
+  price_usdt: string;
+  prob_fanpin: string; prob_lingpin: string; prob_xuanpin: string; prob_xianpin: string; prob_shenpin: string;
+  recycle_fanpin: string; recycle_lingpin: string; recycle_xuanpin: string; recycle_xianpin: string; recycle_shenpin: string;
+  trade_fee_rate: string; recycle_fee_rate: string; withdraw_fee_rate: string;
+  commission_l1: string; commission_l2: string;
+  referral_enabled: boolean;
+  min_withdraw: string;
+  collection_wallet: string; payout_wallet: string;
+  usdt_contract: string; busd_contract: string; trx_contract: string;
+  [key: string]: string | boolean | undefined;
+}
 
 export default function HomePage() {
-  // Core state
   const [lang, setLang] = useState<Lang>('en');
+  const [tab, setTab] = useState<Tab>('blindbox');
   const [wallet, setWallet] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('blindbox');
+  const [mounted, setMounted] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [nftImages, setNftImages] = useState<Record<string, string>>({});
+  const [images, setImages] = useState<Record<string, string>>({});
 
   // Blind box state
-  const [currency, setCurrency] = useState<Currency>('BNB');
+  const [currency, setCurrency] = useState<Currency>('USDT');
+  const [quantity, setQuantity] = useState(1);
   const [buying, setBuying] = useState(false);
-  const [revealNFT, setRevealNFT] = useState<{ rarity: string; id: number } | null>(null);
-  const [showReveal, setShowReveal] = useState(false);
+  const [openResult, setOpenResult] = useState<{ rarity: string; quantity: number } | null>(null);
 
   // Inventory state
-  const [inventory, setInventory] = useState<NFTItem[]>([]);
-  const [invFilter, setInvFilter] = useState('all');
-  const [sellNFT, setSellNFT] = useState<NFTItem | null>(null);
-  const [selling, setSelling] = useState(false);
-  const [showSellDialog, setShowSellDialog] = useState(false);
+  const [inventory, setInventory] = useState<Record<string, unknown>[]>([]);
+  const [inventoryFilter, setInventoryFilter] = useState('held');
+  const [sellModal, setSellModal] = useState<Record<string, unknown> | null>(null);
+  const [listPrice, setListPrice] = useState('');
+  const [giftTo, setGiftTo] = useState('');
+  const [actionType, setActionType] = useState<'sell' | 'list' | 'gift' | null>(null);
+
+  // Market state
+  const [listings, setListings] = useState<Record<string, unknown>[]>([]);
 
   // Referral state
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [commissions, setCommissions] = useState<CommissionItem[]>([]);
-  const [teamCounts, setTeamCounts] = useState({ l1: 0, l2: 0, l3: 0 });
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
+  const [referralData, setReferralData] = useState<Record<string, unknown> | null>(null);
 
-  // Admin
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminPass, setAdminPass] = useState('');
-  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
-  const [siteOrigin, setSiteOrigin] = useState('');
+  const isBot = mounted && /bot|crawl|spider|whatsapp|telegram/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 
-  // Helper
-  const t = useCallback((key: string) => i18n[lang][key] || key, [lang]);
-
-  // Load settings
-  useEffect(() => {
-    fetch('/api/admin/settings').then(r => r.json()).then(r => {
-      if (r.success) setSettings(r.data);
-    }).catch(() => {});
-    fetch('/api/admin/images').then(r => r.json()).then(r => {
-      if (r.success) {
-        const map: Record<string, string> = {};
-        r.data.forEach((img: NFTImage) => { map[img.rarity] = img.image_url; });
-        setNftImages(map);
-      }
-    }).catch(() => {});
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      const json = await res.json();
+      if (json.success) setSettings(json.data);
+    } catch { /* ignore */ }
   }, []);
 
-  // Load user data when wallet changes
-  useEffect(() => {
+  const loadImages = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/images');
+      const json = await res.json();
+      if (json.success) {
+        const map: Record<string, string> = {};
+        (json.data as { rarity: string; image_url: string }[]).forEach((img) => { map[img.rarity] = img.image_url; });
+        setImages(map);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadInventory = useCallback(async () => {
     if (!wallet) return;
-    loadInventory();
-    loadReferral();
+    try {
+      const res = await fetch(`/api/inventory?wallet=${wallet}&status=${inventoryFilter}`);
+      const json = await res.json();
+      if (json.success) setInventory(json.data || []);
+    } catch { /* ignore */ }
+  }, [wallet, inventoryFilter]);
+
+  const loadMarket = useCallback(async () => {
+    try {
+      const res = await fetch('/api/market');
+      const json = await res.json();
+      if (json.success) setListings(json.data || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadReferral = useCallback(async () => {
+    if (!wallet) return;
+    try {
+      const res = await fetch(`/api/referral?wallet=${wallet}`);
+      const json = await res.json();
+      if (json.success) setReferralData(json.data);
+    } catch { /* ignore */ }
   }, [wallet]);
 
-  // Check referral code from URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ref = params.get('ref');
-    if (ref) {
-      sessionStorage.setItem('ref_code', ref);
-    }
-    setSiteOrigin(siteOrigin);
-  }, []);
-
-  const loadInventory = async () => {
-    if (!wallet) return;
-    try {
-      const r = await fetch(`/api/inventory?wallet=${wallet}&status=${invFilter}`);
-      const d = await r.json();
-      if (d.success) setInventory(d.data);
-    } catch { /* ignore */ }
-  };
-
-  const loadReferral = async () => {
-    if (!wallet) return;
-    try {
-      const r = await fetch(`/api/referral?wallet=${wallet}`);
-      const d = await r.json();
-      if (d.success) {
-        setUserInfo(d.data.user);
-        setCommissions(d.data.commissions);
-        setTeamCounts(d.data.team);
-      }
-    } catch { /* ignore */ }
-  };
-
-  useEffect(() => { loadInventory(); }, [invFilter, wallet]);
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { loadSettings(); loadImages(); }, [loadSettings, loadImages]);
+  useEffect(() => { if (wallet) loadInventory(); }, [wallet, loadInventory]);
+  useEffect(() => { if (tab === 'market') loadMarket(); }, [tab, loadMarket]);
+  useEffect(() => { if (tab === 'referral' && wallet) loadReferral(); }, [tab, wallet, loadReferral]);
 
   const handleConnect = async () => {
     const addr = await connectWallet();
-    if (addr) {
-      setWallet(addr);
-      toast.success(lang === 'zh' ? '钱包已连接' : 'Wallet connected');
-    } else {
-      toast.error(lang === 'zh' ? '请安装钱包插件' : 'Please install a wallet');
-    }
-  };
-
-  const handleDisconnect = () => {
-    setWallet(null);
-    setUserInfo(null);
-    setInventory([]);
-  };
-
-  const handleSwitchNetwork = async () => {
-    const ok = await switchToBSC();
-    if (ok) toast.success(t('common.switch.network'));
-  };
-
-  const getPrice = (cur: Currency): string => {
-    if (!settings) return '0';
-    const key = `price_${cur.toLowerCase()}` as keyof Settings;
-    return settings[key] as string;
-  };
-
-  const getRecyclePrice = (rarity: string): string => {
-    if (!settings) return '0';
-    const key = `recycle_${rarity}` as keyof Settings;
-    return settings[key] as string;
+    if (addr) setWallet(addr);
   };
 
   const handleBuy = async () => {
     if (!wallet || !settings) return;
     setBuying(true);
+    setOpenResult(null);
     try {
-      const onBSC = await isBSCNetwork();
-      if (!onBSC) {
-        await switchToBSC();
-      }
+      const onBsc = await isBSCNetwork();
+      if (!onBsc) await switchToBSC();
 
-      let txHash: string | null = null;
-      const price = getPrice(currency);
-      const toAddr = settings.payment_wallet_address;
+      // Get contract address for currency
+      const contractMap: Record<string, string> = { USDT: settings.usdt_contract, BUSD: settings.busd_contract, TRX: settings.trx_contract };
+      const contractAddr = contractMap[currency] || '';
 
-      if (toAddr) {
-        if (currency === 'BNB') {
-          txHash = await sendBNB(toAddr, price);
-        } else {
-          const contractKey = `${currency.toLowerCase()}_contract` as keyof Settings;
-          const contractAddr = settings[contractKey] as string;
-          if (contractAddr) {
-            txHash = await sendERC20(contractAddr, toAddr, price);
-          }
+      // Send payment to collection wallet
+      if (settings.collection_wallet) {
+        const txHash = await sendPayment(currency, contractAddr, settings.collection_wallet, (parseFloat(settings.price_usdt) * quantity).toFixed(8));
+        if (!txHash && currency !== 'BNB') {
+          // For ERC20, try anyway (user may have already approved)
         }
       }
 
-      const refCode = sessionStorage.getItem('ref_code') || undefined;
-      const r = await fetch('/api/blindbox/buy', {
+      const res = await fetch('/api/blindbox/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, currency, tx_hash: txHash, ref_code: refCode }),
+        body: JSON.stringify({ wallet, currency, quantity, tx_hash: '' }),
       });
-      const d = await r.json();
-
-      if (d.success) {
-        setRevealNFT({ rarity: d.data.rarity, id: d.data.nft_id });
-        setShowReveal(true);
-        toast.success(t('blindbox.success'));
+      const json = await res.json();
+      if (json.success) {
+        setOpenResult({ rarity: json.data.results[0].rarity, quantity: json.data.quantity });
+        loadSettings();
         loadInventory();
-        loadReferral();
-      } else {
-        toast.error(d.error || t('blindbox.error'));
       }
-    } catch {
-      toast.error(t('blindbox.error'));
-    } finally {
-      setBuying(false);
-    }
+    } catch { /* ignore */ }
+    setBuying(false);
   };
 
-  const handleSell = async () => {
-    if (!sellNFT || !wallet) return;
-    setSelling(true);
+  const handleSell = async (nftId: number) => {
+    if (!wallet) return;
     try {
-      const r = await fetch('/api/inventory', {
+      const res = await fetch('/api/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nft_id: sellNFT.id, wallet }),
+        body: JSON.stringify({ action: 'sell', nft_id: nftId, wallet }),
       });
-      const d = await r.json();
-      if (d.success) {
-        toast.success(t('inventory.sell.success'));
-        setShowSellDialog(false);
-        setSellNFT(null);
-        loadInventory();
-        loadReferral();
-      } else {
-        toast.error(d.error || t('inventory.sell.error'));
-      }
-    } catch {
-      toast.error(t('inventory.sell.error'));
-    } finally {
-      setSelling(false);
-    }
+      const json = await res.json();
+      if (json.success) { setSellModal(null); loadInventory(); loadSettings(); }
+    } catch { /* ignore */ }
+  };
+
+  const handleList = async (nftId: number) => {
+    if (!wallet || !listPrice) return;
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list', nft_id: nftId, wallet, price: parseFloat(listPrice) }),
+      });
+      const json = await res.json();
+      if (json.success) { setSellModal(null); setListPrice(''); loadInventory(); }
+    } catch { /* ignore */ }
+  };
+
+  const handleGift = async (nftId: number) => {
+    if (!wallet || !giftTo) return;
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'gift', nft_id: nftId, wallet, gift_to: giftTo }),
+      });
+      const json = await res.json();
+      if (json.success) { setSellModal(null); setGiftTo(''); loadInventory(); }
+    } catch { /* ignore */ }
+  };
+
+  const handleCancelListing = async (nftId: number) => {
+    if (!wallet) return;
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel_listing', nft_id: nftId, wallet }),
+      });
+      const json = await res.json();
+      if (json.success) loadInventory();
+    } catch { /* ignore */ }
+  };
+
+  const handleMarketBuy = async (listingId: number) => {
+    if (!wallet) return;
+    try {
+      const res = await fetch('/api/market', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: listingId, buyer_wallet: wallet }),
+      });
+      const json = await res.json();
+      if (json.success) { loadMarket(); loadInventory(); }
+    } catch { /* ignore */ }
   };
 
   const handleWithdraw = async () => {
     if (!wallet) return;
-    setWithdrawing(true);
     try {
-      const r = await fetch('/api/referral', {
+      const res = await fetch('/api/referral', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet }),
       });
-      const d = await r.json();
-      if (d.success) {
-        toast.success(t('referral.withdraw.success'));
-        setShowWithdrawDialog(false);
-        loadReferral();
-      } else {
-        toast.error(d.error || t('referral.withdraw.error'));
-      }
-    } catch {
-      toast.error(t('referral.withdraw.error'));
-    } finally {
-      setWithdrawing(false);
-    }
+      const json = await res.json();
+      if (json.success) loadReferral();
+    } catch { /* ignore */ }
   };
 
-  const handleAdminLogin = async () => {
-    try {
-      const r = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: 'admin', password: adminPass }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        setAdminLoggedIn(true);
-        setShowAdminLogin(false);
-        window.location.href = '/admin';
-      } else {
-        toast.error('Invalid credentials');
-      }
-    } catch {
-      toast.error('Login failed');
-    }
-  };
+  // Bot page - simple clean page without sensitive content
+  if (isBot) {
+    return (
+      <div className="min-h-screen bg-[#0f0b1e] flex items-center justify-center">
+        <div className="text-center px-4">
+          <h1 className="text-2xl font-bold text-white mb-2">{t('app.title', lang)}</h1>
+          <p className="text-gray-400 text-sm">{t('app.subtitle', lang)}</p>
+        </div>
+      </div>
+    );
+  }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(t('referral.copied'));
-  };
-
-  const shortenAddr = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  const quickQty = [1, 5, 10, 25, 50, 99];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950">
-      <Toaster theme="dark" />
-
+    <div className="min-h-screen bg-[#0f0b1e] text-white">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-gray-950/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <header className="sticky top-0 z-50 bg-[#0f0b1e]/95 backdrop-blur border-b border-white/5">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+          <h1 className="text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">{t('app.title', lang)}</h1>
           <div className="flex items-center gap-2">
-            <Gift className="h-6 w-6 text-amber-400" />
-            <span className="text-lg font-bold text-white">{t('app.title')}</span>
-            <Badge variant="outline" className="border-amber-500/50 text-amber-400 text-xs">BSC</Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setLang(lang === 'en' ? 'zh' : 'en')} className="text-gray-400 hover:text-white">
-              <Globe className="mr-1 h-4 w-4" />
-              {t('lang.switch')}
-            </Button>
+            <button onClick={() => setLang(lang === 'en' ? 'zh' : 'en')} className="text-xs px-2 py-1 rounded border border-white/10 hover:bg-white/5">{t('lang.switch', lang)}</button>
             {wallet ? (
-              <div className="flex items-center gap-2">
-                <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                  <CheckCircle className="mr-1 h-3 w-3" />
-                  {shortenAddr(wallet)}
-                </Badge>
-                <Button variant="ghost" size="sm" onClick={handleDisconnect} className="text-gray-500 hover:text-red-400">
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
+              <span className="text-xs text-green-400">{wallet.slice(0, 6)}...{wallet.slice(-4)}</span>
             ) : (
-              <Button size="sm" onClick={handleConnect} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold">
-                <Wallet className="mr-1 h-4 w-4" />
-                {t('nav.connect')}
-              </Button>
+              <button onClick={handleConnect} className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500">{t('nav.connect', lang)}</button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-6xl px-4 py-6">
-        {!wallet ? (
-          /* Not Connected - Landing */
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="mb-6 rounded-2xl bg-gradient-to-br from-amber-500/20 to-purple-500/20 p-6 border border-amber-500/20">
-              <Box className="h-16 w-16 text-amber-400 animate-bounce" />
+      {/* Subtitle */}
+      {!wallet && (
+        <div className="max-w-lg mx-auto px-4 pt-6 pb-2 text-center">
+          <p className="text-sm text-gray-400">{t('app.subtitle', lang)}</p>
+          <button onClick={handleConnect} className="mt-4 px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 font-medium text-sm">{t('nav.connect', lang)}</button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <nav className="max-w-lg mx-auto px-4 mt-4">
+        <div className="flex gap-1 bg-white/5 rounded-xl p-1">
+          {(['blindbox', 'inventory', 'market', 'referral'] as Tab[]).map((tb) => (
+            <button key={tb} onClick={() => setTab(tb)} className={`flex-1 py-2 text-xs font-medium rounded-lg transition ${tab === tb ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}>{t(`nav.${tb}`, lang)}</button>
+          ))}
+        </div>
+      </nav>
+
+      <main className="max-w-lg mx-auto px-4 py-4">
+        {/* ===== BLIND BOX TAB ===== */}
+        {tab === 'blindbox' && settings && (
+          <div className="space-y-4">
+            {/* Price display */}
+            <div className="bg-white/5 rounded-2xl p-5 text-center">
+              <p className="text-gray-400 text-xs mb-1">{t('blindbox.price', lang)}</p>
+              <p className="text-3xl font-bold">{settings.price_usdt} <span className="text-base text-gray-400">USDT</span></p>
+              <p className="text-xs text-gray-500 mt-1">{t('common.network', lang)}</p>
             </div>
-            <h1 className="mb-4 text-4xl font-bold text-white md:text-5xl tracking-tight">{t('app.title')}</h1>
-            <p className="mb-8 text-base text-gray-400 max-w-md leading-relaxed">{t('app.subtitle')}</p>
-            <Button size="lg" onClick={handleConnect} className="bg-amber-500 hover:bg-amber-600 text-black font-bold text-lg px-8 py-6 rounded-xl">
-              <Wallet className="mr-2 h-5 w-5" />
-              {t('nav.connect')}
-            </Button>
+
+            {/* Currency select */}
+            <div>
+              <p className="text-xs text-gray-400 mb-2">{t('blindbox.select.currency', lang)}</p>
+              <div className="grid grid-cols-4 gap-2">
+                {CURRENCIES.map((c) => (
+                  <button key={c} onClick={() => setCurrency(c)} className={`py-2 rounded-xl text-sm font-medium border transition ${currency === c ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-white/10 bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quantity */}
+            <div>
+              <p className="text-xs text-gray-400 mb-2">{t('blindbox.quantity', lang)}</p>
+              <div className="flex gap-2 flex-wrap mb-2">
+                {quickQty.map((q) => (
+                  <button key={q} onClick={() => setQuantity(q)} className={`px-3 py-1.5 rounded-lg text-xs border transition ${quantity === q ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-white/10 bg-white/5 text-gray-400 hover:bg-white/10'}`}>{q}</button>
+                ))}
+              </div>
+              <input type="number" min={1} max={99} value={quantity} onChange={(e) => setQuantity(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500" />
+            </div>
+
+            {/* Total */}
+            <div className="flex justify-between items-center bg-white/5 rounded-xl px-4 py-3">
+              <span className="text-gray-400 text-sm">{t('blindbox.total', lang)}</span>
+              <span className="font-bold text-lg">{(parseFloat(settings.price_usdt) * quantity).toFixed(2)} USDT</span>
+            </div>
+
+            {/* Buy button */}
+            <button onClick={handleBuy} disabled={buying || !wallet} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              {buying ? t('blindbox.buying', lang) : t('blindbox.buy', lang)}
+            </button>
+            {!wallet && <p className="text-center text-xs text-gray-500">Please connect wallet first</p>}
+
+            {/* Probability display */}
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="grid grid-cols-5 gap-1 text-center">
+                {RARITIES.map((r) => (
+                  <div key={r} className="space-y-1">
+                    <div className={`text-xs font-medium ${RARITY_COLORS[r]?.split(' ')[0] || 'text-gray-400'}`}>{t(`rarity.${r}`, lang)}</div>
+                    <div className="text-xs text-gray-500">{settings[`prob_${r}`]}%</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Open result modal */}
+            {openResult && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setOpenResult(null)}>
+                <div className="bg-[#1a1230] rounded-2xl p-6 text-center max-w-xs mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className={`w-24 h-24 mx-auto rounded-xl border-2 ${RARITY_COLORS[openResult.rarity] || ''} flex items-center justify-center mb-4 overflow-hidden`}>
+                    {images[openResult.rarity] ? <img src={images[openResult.rarity]} alt={openResult.rarity} className="w-full h-full object-cover" /> : <span className="text-2xl">?</span>}
+                  </div>
+                  <p className="text-sm text-gray-400 mb-1">{t('blindbox.result', lang)}</p>
+                  <p className={`text-xl font-bold ${RARITY_COLORS[openResult.rarity]?.split(' ')[0] || ''}`}>{t(`rarity.${openResult.rarity}`, lang)}</p>
+                  {openResult.quantity > 1 && <p className="text-xs text-gray-500 mt-1">x{openResult.quantity}</p>}
+                  <button onClick={() => setOpenResult(null)} className="mt-4 px-6 py-2 rounded-xl bg-purple-600 text-sm">{t('common.close', lang)}</button>
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          /* Connected - Tabs */
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="mb-6 grid w-full grid-cols-3 bg-white/5 border border-white/10 rounded-xl">
-              <TabsTrigger value="blindbox" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 rounded-lg">
-                <Gift className="mr-1 h-4 w-4" />{t('nav.blindbox')}
-              </TabsTrigger>
-              <TabsTrigger value="inventory" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 rounded-lg">
-                <Box className="mr-1 h-4 w-4" />{t('nav.inventory')}
-              </TabsTrigger>
-              <TabsTrigger value="referral" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 rounded-lg">
-                <Users className="mr-1 h-4 w-4" />{t('nav.referral')}
-              </TabsTrigger>
-            </TabsList>
+        )}
 
-            {/* BLIND BOX TAB */}
-            <TabsContent value="blindbox" className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                {/* Box Preview */}
-                <Card className="border-white/10 bg-white/5 backdrop-blur overflow-hidden">
-                  <CardContent className="flex flex-col items-center justify-center p-8">
-                    <div className="relative mb-6">
-                      <div className="h-48 w-48 rounded-2xl bg-gradient-to-br from-amber-500/30 to-purple-500/30 flex items-center justify-center border border-amber-500/30 animate-pulse">
-                        <Gift className="h-24 w-24 text-amber-400" />
+        {/* ===== INVENTORY TAB ===== */}
+        {tab === 'inventory' && (
+          <div className="space-y-4">
+            {!wallet ? (
+              <div className="text-center py-12 text-gray-500">{t('inventory.empty', lang)}</div>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  {['all', 'held', 'listed'].map((f) => (
+                    <button key={f} onClick={() => setInventoryFilter(f)} className={`px-3 py-1.5 rounded-lg text-xs border transition ${inventoryFilter === f ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-white/10 bg-white/5 text-gray-400'}`}>{t(`inventory.filter.${f === 'all' ? 'all' : f}`, lang)}</button>
+                  ))}
+                </div>
+                {inventory.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">{t('inventory.empty', lang)}</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {inventory.map((nft: Record<string, unknown>) => {
+                      const rarity = nft.rarity as string;
+                      const status = nft.status as string;
+                      return (
+                        <div key={nft.id as number} className={`rounded-xl border p-3 ${RARITY_BG[rarity] || 'bg-white/5'} ${RARITY_COLORS[rarity] || 'border-white/10'}`}>
+                          <div className="w-full aspect-square rounded-lg overflow-hidden mb-2">
+                            {images[rarity] ? <img src={images[rarity]} alt={rarity} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">?</div>}
+                          </div>
+                          <p className={`text-sm font-medium ${RARITY_COLORS[rarity]?.split(' ')[0] || ''}`}>{t(`rarity.${rarity}`, lang)}</p>
+                          <p className="text-xs text-gray-500">#{nft.id as number}</p>
+                          {status === 'held' && wallet && (
+                            <div className="flex gap-1 mt-2">
+                              <button onClick={() => { setSellModal(nft); setActionType('sell'); }} className="flex-1 text-xs py-1 rounded bg-purple-600/80 hover:bg-purple-500">{t('inventory.sell.platform', lang)}</button>
+                              <button onClick={() => { setSellModal(nft); setActionType('list'); }} className="flex-1 text-xs py-1 rounded bg-blue-600/80 hover:bg-blue-500">{t('inventory.sell.market', lang)}</button>
+                              <button onClick={() => { setSellModal(nft); setActionType('gift'); }} className="text-xs py-1 px-2 rounded bg-white/10 hover:bg-white/20">{t('inventory.gift', lang)}</button>
+                            </div>
+                          )}
+                          {status === 'listed' && (
+                            <button onClick={() => handleCancelListing(nft.id as number)} className="mt-2 w-full text-xs py-1 rounded bg-red-600/50 hover:bg-red-500">{t('inventory.cancel.listing', lang)}</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Action modal */}
+            {sellModal && settings && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => { setSellModal(null); setActionType(null); }}>
+                <div className="bg-[#1a1230] rounded-2xl p-5 max-w-xs mx-4 w-full" onClick={(e) => e.stopPropagation()}>
+                  {actionType === 'sell' && (() => {
+                    const rarity = sellModal.rarity as string;
+                    const recyclePrice = parseFloat(settings[`recycle_${rarity}`] as string);
+                    const fee = recyclePrice * parseFloat(settings.recycle_fee_rate) / 100;
+                    const receive = recyclePrice - fee;
+                    return (
+                      <>
+                        <p className="text-sm font-medium mb-3">{t('inventory.sell.platform', lang)} - {t(`rarity.${rarity}`, lang)}</p>
+                        <div className="space-y-2 text-xs mb-4">
+                          <div className="flex justify-between"><span className="text-gray-400">{t('inventory.sell.price', lang)}</span><span>{recyclePrice.toFixed(2)} USDT</span></div>
+                          <div className="flex justify-between"><span className="text-gray-400">{t('inventory.sell.fee', lang)}</span><span className="text-red-400">-{fee.toFixed(2)}</span></div>
+                          <div className="flex justify-between font-bold"><span>{t('inventory.sell.receive', lang)}</span><span className="text-green-400">{receive.toFixed(2)} USDT</span></div>
+                        </div>
+                        <button onClick={() => handleSell(sellModal.id as number)} className="w-full py-2.5 rounded-xl bg-purple-600 text-sm font-medium">{t('inventory.sell.confirm', lang)}</button>
+                      </>
+                    );
+                  })()}
+                  {actionType === 'list' && (
+                    <>
+                      <p className="text-sm font-medium mb-3">{t('inventory.sell.market', lang)}</p>
+                      <input type="number" value={listPrice} onChange={(e) => setListPrice(e.target.value)} placeholder="USDT" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:border-purple-500" />
+                      <p className="text-xs text-gray-500 mb-3">{t('market.fee.note', lang)}</p>
+                      <button onClick={() => handleList(sellModal.id as number)} className="w-full py-2.5 rounded-xl bg-blue-600 text-sm font-medium">{t('inventory.list.confirm', lang)}</button>
+                    </>
+                  )}
+                  {actionType === 'gift' && (
+                    <>
+                      <p className="text-sm font-medium mb-3">{t('inventory.gift', lang)}</p>
+                      <input type="text" value={giftTo} onChange={(e) => setGiftTo(e.target.value)} placeholder="0x..." className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:border-purple-500" />
+                      <button onClick={() => handleGift(sellModal.id as number)} className="w-full py-2.5 rounded-xl bg-green-600 text-sm font-medium">{t('inventory.gift.confirm', lang)}</button>
+                    </>
+                  )}
+                  <button onClick={() => { setSellModal(null); setActionType(null); }} className="w-full mt-2 py-2 text-xs text-gray-400">{t('common.cancel', lang)}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== MARKET TAB ===== */}
+        {tab === 'market' && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500">{t('market.fee.note', lang)}</p>
+            {listings.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">{t('market.empty', lang)}</div>
+            ) : (
+              <div className="space-y-3">
+                {listings.map((item: Record<string, unknown>) => {
+                  const rarity = item.rarity as string;
+                  return (
+                    <div key={item.id as number} className={`bg-white/5 rounded-xl p-4 border ${RARITY_COLORS[rarity] || 'border-white/10'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
+                          {images[rarity] ? <img src={images[rarity]} alt={rarity} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center">?</div>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${RARITY_COLORS[rarity]?.split(' ')[0] || ''}`}>{t(`rarity.${rarity}`, lang)}</p>
+                          <p className="text-lg font-bold">{parseFloat(item.price as string).toFixed(2)} USDT</p>
+                          <p className="text-xs text-gray-500">{t('market.seller', lang)}: {(item.seller_wallet as string).slice(0, 6)}...{(item.seller_wallet as string).slice(-4)}</p>
+                        </div>
+                        {wallet && wallet !== (item.seller_wallet as string) && (
+                          <button onClick={() => handleMarketBuy(item.id as number)} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-xs font-medium">{t('market.buy', lang)}</button>
+                        )}
                       </div>
-                      <div className="absolute -top-2 -right-2 h-8 w-8 rounded-full bg-amber-500 flex items-center justify-center text-black font-bold text-xs">?</div>
                     </div>
-                    <h2 className="text-2xl font-bold text-white mb-2">{t('blindbox.title')}</h2>
-                    <p className="text-gray-400 text-center text-sm">{t('blindbox.desc')}</p>
-                  </CardContent>
-                </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-                {/* Buy Panel */}
-                <Card className="border-white/10 bg-white/5 backdrop-blur">
-                  <CardHeader>
-                    <CardTitle className="text-white flex items-center gap-2">
-                      <Coins className="h-5 w-5 text-amber-400" />
-                      {t('blindbox.select.currency')}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
-                      <SelectTrigger className="bg-white/5 border-white/10 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-white/10">
-                        {CURRENCIES.map((c) => (
-                          <SelectItem key={c} value={c} className="text-white focus:bg-white/10 focus:text-white">
-                            <span className="flex items-center gap-2">
-                              {c === 'BNB' ? '💎' : c === 'USDT' ? '💲' : c === 'BUSD' ? '💲' : c === 'USDC' ? '💲' : c === 'SOL' ? '◎' : '🐕'}
-                              {t(`common.${c.toLowerCase()}`)}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+        {/* ===== REFERRAL TAB ===== */}
+        {tab === 'referral' && (
+          <div className="space-y-4">
+            {!wallet ? (
+              <div className="text-center py-12 text-gray-500">Connect wallet to view referral info</div>
+            ) : referralData ? (
+              <>
+                {/* Disabled notice */}
+                {referralData.referral_enabled === false && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 text-xs text-yellow-400">{t('referral.disabled', lang)}</div>
+                )}
 
-                    <div className="space-y-2 rounded-lg bg-white/5 p-3 border border-white/10">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">{t('blindbox.price')}</span>
-                        <span className="text-white font-medium">{getPrice(currency)} {currency}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">{t('blindbox.fee')}</span>
-                        <span className="text-amber-400">{settings?.buy_fee_rate || '5'}%</span>
-                      </div>
-                      <Separator className="bg-white/10" />
-                      <div className="flex justify-between text-sm font-bold">
-                        <span className="text-gray-300">{t('blindbox.total')}</span>
-                        <span className="text-amber-400">
-                          {(parseFloat(getPrice(currency)) * (1 + parseFloat(settings?.buy_fee_rate || '5') / 100)).toFixed(6)} {currency}
-                        </span>
-                      </div>
+                {/* Referral link */}
+                {referralData.user && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <p className="text-xs text-gray-400 mb-1">{t('referral.my.code', lang)}</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-sm font-mono text-purple-300">{(referralData.user as Record<string, unknown>).referral_code as string}</code>
+                      <button onClick={() => { navigator.clipboard.writeText((referralData.user as Record<string, unknown>).referral_code as string); }} className="text-xs text-purple-400">{t('referral.copy', lang)}</button>
                     </div>
+                    <p className="text-xs text-gray-400 mt-2 mb-1">{t('referral.my.link', lang)}</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs font-mono text-gray-300 truncate">{siteOrigin}/?ref={(referralData.user as Record<string, unknown>).referral_code as string}</code>
+                      <button onClick={() => { navigator.clipboard.writeText(`${siteOrigin}/?ref=${(referralData.user as Record<string, unknown>).referral_code as string}`); }} className="text-xs text-purple-400 flex-shrink-0">{t('referral.copy', lang)}</button>
+                    </div>
+                  </div>
+                )}
 
-                    {/* Probability Preview */}
-                    <div className="space-y-1">
-                      <span className="text-xs text-gray-500">{lang === 'zh' ? '爆出概率' : 'Drop Rate'}</span>
-                      {['normal', 'rare', 'epic', 'legend', 'myth'].map((r) => (
-                        <div key={r} className="flex items-center gap-2 text-xs">
-                          <div className={`h-2 w-2 rounded-full bg-gradient-to-r ${RARITY_COLORS[r]}`} />
-                          <span className="text-gray-400 flex-1">{t(`blindbox.rarity.${r}`)}</span>
-                          <span className="text-gray-300">{settings?.[`prob_${r}` as keyof Settings] || '0'}%</span>
+                {/* Commission balance */}
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-400 mb-1">{t('referral.commission.balance', lang)}</p>
+                  <p className="text-2xl font-bold text-green-400">{referralData.commission_balance as string} <span className="text-sm text-gray-400">USDT</span></p>
+                  <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                    <span>{t('referral.commission.total', lang)}: {referralData.total_commission as string} USDT</span>
+                    <span>{t('referral.team.count', lang)}: {(referralData.team as Record<string, number>).l1 + (referralData.team as Record<string, number>).l2}</span>
+                  </div>
+                  <div className="flex gap-2 mt-2 text-xs text-gray-500">
+                    <span>{t('referral.level.1', lang)}: {(referralData.rates as Record<string, string>).l1}% | {t('referral.level.2', lang)}: {(referralData.rates as Record<string, string>).l2}%</span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">{t('referral.self.note', lang)}</p>
+                </div>
+
+                {/* Withdraw */}
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm">{t('referral.withdraw', lang)}</span>
+                    <span className="text-xs text-gray-500">{t('referral.withdraw.min', lang)}: {referralData.min_withdraw as string} USDT</span>
+                  </div>
+                  <button onClick={handleWithdraw} disabled={parseFloat(referralData.commission_balance as string) < parseFloat(referralData.min_withdraw as string)} className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                    {t('referral.withdraw', lang)}
+                  </button>
+                </div>
+
+                {/* Commission history */}
+                {(referralData.commissions as Record<string, unknown>[]).length > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <p className="text-xs text-gray-400 mb-2">{t('referral.history', lang)}</p>
+                    <div className="space-y-2">
+                      {(referralData.commissions as Record<string, unknown>[]).slice(0, 10).map((c: Record<string, unknown>, i: number) => (
+                        <div key={i} className="flex justify-between text-xs">
+                          <span className="text-gray-400">{t(`referral.level.${c.level as number}`, lang)} - {(c.from_wallet as string).slice(0, 6)}...</span>
+                          <span className="text-green-400">+{c.amount as string} USDT</span>
                         </div>
                       ))}
                     </div>
-
-                    <Button
-                      onClick={handleBuy}
-                      disabled={buying}
-                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-bold text-lg py-6 rounded-xl"
-                    >
-                      {buying ? (
-                        <><Loader2 className="mr-2 h-5 w-5 animate-spin" />{t('blindbox.buying')}</>
-                      ) : (
-                        <><Gift className="mr-2 h-5 w-5" />{t('blindbox.buy')}</>
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Rarity Showcase */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                {['normal', 'rare', 'epic', 'legend', 'myth'].map((r) => (
-                  <div key={r} className={`rounded-xl border ${RARITY_BORDER[r]} bg-white/5 p-3 text-center ${RARITY_GLOW[r]} transition-all hover:scale-105`}>
-                    <div className="mx-auto mb-2 h-16 w-16 rounded-lg bg-gradient-to-br overflow-hidden">
-                      <img src={nftImages[r] || `/nft/${r}.svg`} alt={r} className="h-full w-full object-cover" />
-                    </div>
-                    <p className="text-sm font-semibold text-white">{t(`blindbox.rarity.${r}`)}</p>
-                    <p className="text-xs text-gray-400">{t(`rarity.${r}.desc`)}</p>
-                    <p className="text-xs text-amber-400 mt-1">{lang === 'zh' ? '回收' : 'Recycle'}: {getRecyclePrice(r)} BNB</p>
                   </div>
-                ))}
-              </div>
-            </TabsContent>
-
-            {/* INVENTORY TAB */}
-            <TabsContent value="inventory" className="space-y-4">
-              <div className="flex gap-2 mb-4">
-                {['all', 'held', 'sold'].map((f) => (
-                  <Button key={f} size="sm" variant={invFilter === f ? 'default' : 'outline'}
-                    onClick={() => setInvFilter(f)}
-                    className={invFilter === f ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'border-white/10 text-gray-400'}
-                  >
-                    {t(`inventory.filter.${f}`)}
-                  </Button>
-                ))}
-              </div>
-
-              {inventory.length === 0 ? (
-                <div className="flex flex-col items-center py-16 text-gray-500">
-                  <Box className="h-16 w-16 mb-4 opacity-30" />
-                  <p>{t('inventory.empty')}</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {inventory.map((nft) => (
-                    <Card key={nft.id} className={`border ${RARITY_BORDER[nft.rarity]} bg-white/5 overflow-hidden ${RARITY_GLOW[nft.rarity]}`}>
-                      <div className="relative">
-                        <img src={nftImages[nft.rarity] || `/nft/${nft.rarity}.svg`} alt={nft.rarity} className="h-36 w-full object-cover" />
-                        <Badge className={`absolute top-2 right-2 bg-gradient-to-r ${RARITY_COLORS[nft.rarity]} text-white text-xs`}>
-                          {t(`blindbox.rarity.${nft.rarity}`)}
-                        </Badge>
-                        {nft.status === 'sold' && (
-                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                            <Badge variant="outline" className="border-red-500 text-red-400">{t('inventory.status.sold')}</Badge>
-                          </div>
-                        )}
-                      </div>
-                      <CardContent className="p-3 space-y-2">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-400"># {nft.id}</span>
-                          <span className="text-gray-400">{nft.purchase_currency}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-400">{t('inventory.sell.price')}</span>
-                          <span className="text-amber-400">{getRecyclePrice(nft.rarity)} BNB</span>
-                        </div>
-                        {nft.status === 'held' && (
-                          <Button
-                            size="sm"
-                            className="w-full bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/30"
-                            onClick={() => { setSellNFT(nft); setShowSellDialog(true); }}
-                          >
-                            {t('inventory.sell')}
-                          </Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* REFERRAL TAB */}
-            <TabsContent value="referral" className="space-y-6">
-              {/* Commission Balance */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card className="border-white/10 bg-white/5">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-sm text-gray-400">{t('referral.commission.balance')}</p>
-                    <p className="text-2xl font-bold text-amber-400">{userInfo?.commission_balance || '0'} BNB</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-white/10 bg-white/5">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-sm text-gray-400">{t('referral.commission.total')}</p>
-                    <p className="text-2xl font-bold text-green-400">{userInfo?.total_commission || '0'} BNB</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-white/10 bg-white/5">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-sm text-gray-400">{t('referral.team.count')}</p>
-                    <p className="text-2xl font-bold text-blue-400">{teamCounts.l1 + teamCounts.l2 + teamCounts.l3}</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Referral Link */}
-              <Card className="border-white/10 bg-white/5">
-                <CardHeader>
-                  <CardTitle className="text-white text-base flex items-center gap-2">
-                    <Users className="h-4 w-4 text-amber-400" />
-                    {t('referral.my.link')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Input readOnly value={`${siteOrigin}?ref=${userInfo?.referral_code || ''}`}
-                      className="bg-white/5 border-white/10 text-white text-sm" />
-                    <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-400"
-                      onClick={() => copyToClipboard(`${siteOrigin}?ref=${userInfo?.referral_code || ''}`)}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-400">{t('referral.my.code')}:</span>
-                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 font-mono">{userInfo?.referral_code || '---'}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Commission Rates */}
-              <Card className="border-white/10 bg-white/5">
-                <CardHeader>
-                  <CardTitle className="text-white text-base">{lang === 'zh' ? '佣金比例' : 'Commission Rates'}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { level: 1, rate: settings?.commission_l1 || '10', count: teamCounts.l1 },
-                      { level: 2, rate: settings?.commission_l2 || '5', count: teamCounts.l2 },
-                      { level: 3, rate: settings?.commission_l3 || '2', count: teamCounts.l3 },
-                    ].map((item) => (
-                      <div key={item.level} className="rounded-lg bg-white/5 p-3 text-center border border-white/10">
-                        <p className="text-xs text-gray-400">{t(`referral.level.${item.level}`)}</p>
-                        <p className="text-lg font-bold text-amber-400">{item.rate}%</p>
-                        <p className="text-xs text-gray-500">{item.count} {lang === 'zh' ? '人' : 'members'}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Withdraw Button */}
-              <Button
-                onClick={() => setShowWithdrawDialog(true)}
-                disabled={!userInfo || parseFloat(userInfo.commission_balance) <= 0}
-                className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-5 rounded-xl"
-              >
-                <Coins className="mr-2 h-5 w-5" />
-                {t('referral.withdraw')} ({userInfo?.commission_balance || '0'} BNB)
-              </Button>
-
-              {/* Commission History */}
-              {commissions.length > 0 && (
-                <Card className="border-white/10 bg-white/5">
-                  <CardHeader>
-                    <CardTitle className="text-white text-base">{t('referral.history')}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-64">
-                      <div className="space-y-2">
-                        {commissions.map((c) => (
-                          <div key={c.id} className="flex items-center justify-between rounded-lg bg-white/5 p-2 text-sm border border-white/5">
-                            <div>
-                              <span className="text-gray-400">L{c.level}</span>
-                              <span className="ml-2 text-gray-500">{shortenAddr(c.from_wallet)}</span>
-                            </div>
-                            <span className="text-amber-400 font-medium">+{c.amount} BNB</span>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-          </Tabs>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12 text-gray-500">{t('common.loading', lang)}</div>
+            )}
+          </div>
         )}
       </main>
 
-      {/* Footer with hidden admin entry */}
-      <footer className="border-t border-white/5 mt-12">
-        <div className="mx-auto max-w-6xl px-4 py-6 flex items-center justify-between">
-          <p className="text-xs text-gray-600">{t('footer.copyright')}</p>
-          <button
-            onClick={() => setShowAdminLogin(true)}
-            className="text-[8px] text-gray-800 hover:text-gray-600 transition-colors select-none cursor-default"
-            style={{ fontSize: '1px', opacity: 0.1 }}
-          >
-            admin
-          </button>
-        </div>
+      {/* Footer with hidden admin link */}
+      <footer className="max-w-lg mx-auto px-4 py-8 text-center">
+        <p className="text-[8px] text-white/5 cursor-default select-none" onClick={() => window.location.href = '/admin'}>{t('footer.copyright', lang)}</p>
       </footer>
-
-      {/* REVEAL DIALOG */}
-      <Dialog open={showReveal} onOpenChange={setShowReveal}>
-        <DialogContent className="bg-gray-900 border-amber-500/30 max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-center text-amber-400 text-xl">{t('blindbox.result')}</DialogTitle>
-            <DialogDescription className="sr-only">NFT Reveal</DialogDescription>
-          </DialogHeader>
-          {revealNFT && (
-            <div className="flex flex-col items-center py-6">
-              <div className={`h-40 w-40 rounded-2xl overflow-hidden border-2 ${RARITY_BORDER[revealNFT.rarity]} ${RARITY_GLOW[revealNFT.rarity]} mb-4`}>
-                <img src={nftImages[revealNFT.rarity] || `/nft/${revealNFT.rarity}.svg`} alt={revealNFT.rarity} className="h-full w-full object-cover" />
-              </div>
-              <Badge className={`bg-gradient-to-r ${RARITY_COLORS[revealNFT.rarity]} text-white text-lg px-4 py-1 mb-2`}>
-                {t(`blindbox.rarity.${revealNFT.rarity}`)}
-              </Badge>
-              <p className="text-sm text-gray-400">{t(`rarity.${revealNFT.rarity}.desc`)}</p>
-              <p className="text-xs text-gray-500 mt-2">#{revealNFT.id}</p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setShowReveal(false)} className="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold">
-              {t('common.close')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* SELL DIALOG */}
-      <Dialog open={showSellDialog} onOpenChange={setShowSellDialog}>
-        <DialogContent className="bg-gray-900 border-white/10">
-          <DialogHeader>
-            <DialogTitle className="text-white">{t('inventory.sell')}</DialogTitle>
-            <DialogDescription className="sr-only">Sell NFT</DialogDescription>
-          </DialogHeader>
-          {sellNFT && settings && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-lg bg-white/5 p-3 border border-white/10">
-                <img src={nftImages[sellNFT.rarity] || `/nft/${sellNFT.rarity}.svg`} alt={sellNFT.rarity} className="h-12 w-12 rounded-lg object-cover" />
-                <div>
-                  <p className="text-white font-medium">{t(`blindbox.rarity.${sellNFT.rarity}`)} #{sellNFT.id}</p>
-                  <p className="text-xs text-gray-400">{t(`rarity.${sellNFT.rarity}.desc`)}</p>
-                </div>
-              </div>
-              <div className="space-y-2 rounded-lg bg-white/5 p-3 border border-white/10">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">{t('inventory.sell.price')}</span>
-                  <span className="text-white">{getRecyclePrice(sellNFT.rarity)} BNB</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">{t('inventory.sell.fee')}</span>
-                  <span className="text-red-400">-{(parseFloat(getRecyclePrice(sellNFT.rarity)) * parseFloat(settings.sell_fee_rate) / 100).toFixed(6)} BNB ({settings.sell_fee_rate}%)</span>
-                </div>
-                <Separator className="bg-white/10" />
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-gray-300">{t('inventory.sell.receive')}</span>
-                  <span className="text-green-400">{(parseFloat(getRecyclePrice(sellNFT.rarity)) * (1 - parseFloat(settings.sell_fee_rate) / 100)).toFixed(6)} BNB</span>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowSellDialog(false)} className="border-white/10 text-gray-400">{t('common.cancel')}</Button>
-            <Button onClick={handleSell} disabled={selling} className="bg-green-500 hover:bg-green-600 text-white font-bold">
-              {selling ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-1 h-4 w-4" />}
-              {t('inventory.sell.confirm')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* WITHDRAW DIALOG */}
-      <Dialog open={showWithdrawDialog} onOpenChange={setShowWithdrawDialog}>
-        <DialogContent className="bg-gray-900 border-white/10">
-          <DialogHeader>
-            <DialogTitle className="text-white">{t('referral.withdraw')}</DialogTitle>
-            <DialogDescription className="sr-only">Withdraw commission</DialogDescription>
-          </DialogHeader>
-          {userInfo && settings && (
-            <div className="space-y-3 rounded-lg bg-white/5 p-3 border border-white/10">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">{lang === 'zh' ? '佣金余额' : 'Balance'}</span>
-                <span className="text-white">{userInfo.commission_balance} BNB</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">{t('referral.withdraw.fee')}</span>
-                <span className="text-red-400">-{(parseFloat(userInfo.commission_balance) * parseFloat(settings.withdraw_fee_rate) / 100).toFixed(6)} BNB ({settings.withdraw_fee_rate}%)</span>
-              </div>
-              <Separator className="bg-white/10" />
-              <div className="flex justify-between text-sm font-bold">
-                <span className="text-gray-300">{t('referral.withdraw.receive')}</span>
-                <span className="text-green-400">{(parseFloat(userInfo.commission_balance) * (1 - parseFloat(settings.withdraw_fee_rate) / 100)).toFixed(6)} BNB</span>
-              </div>
-            </div>
-          )}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowWithdrawDialog(false)} className="border-white/10 text-gray-400">{t('common.cancel')}</Button>
-            <Button onClick={handleWithdraw} disabled={withdrawing} className="bg-green-500 hover:bg-green-600 text-white font-bold">
-              {withdrawing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Coins className="mr-1 h-4 w-4" />}
-              {t('referral.withdraw.confirm')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ADMIN LOGIN DIALOG */}
-      <Dialog open={showAdminLogin} onOpenChange={setShowAdminLogin}>
-        <DialogContent className="bg-gray-900 border-white/10 max-w-xs">
-          <DialogHeader>
-            <DialogTitle className="text-white">Admin</DialogTitle>
-            <DialogDescription className="sr-only">Admin login</DialogDescription>
-          </DialogHeader>
-          <Input type="password" placeholder="Password" value={adminPass} onChange={(e) => setAdminPass(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
-            className="bg-white/5 border-white/10 text-white" />
-          <DialogFooter>
-            <Button onClick={handleAdminLogin} className="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold">
-              <Shield className="mr-1 h-4 w-4" />Login
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
+
+const siteOrigin = typeof window !== 'undefined' ? window.location.origin : '';

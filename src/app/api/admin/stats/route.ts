@@ -5,28 +5,15 @@ export async function GET() {
   try {
     const client = getSupabaseClient();
 
-    // Get user count
     const { count: userCount } = await client.from('users').select('*', { count: 'exact', head: true });
-
-    // Get transaction count
     const { count: txCount } = await client.from('transactions').select('*', { count: 'exact', head: true });
-
-    // Get NFT count
     const { count: nftCount } = await client.from('nft_inventory').select('*', { count: 'exact', head: true });
 
-    // Get recent transactions
-    const { data: recentTx } = await client.from('transactions').select('*').order('created_at', { ascending: false }).limit(50);
-
-    // Get recent users
-    const { data: recentUsers } = await client.from('users').select('wallet_address, referral_code, total_spent, total_boxes, created_at').order('created_at', { ascending: false }).limit(50);
-
-    // Total volume
     const { data: volumeData } = await client.from('transactions').select('amount').eq('type', 'buy_blindbox');
+    const totalVolume = (volumeData || []).reduce((sum: number, t: { amount: string }) => sum + parseFloat(t.amount || '0'), 0);
 
-    let totalVolume = 0;
-    if (volumeData) {
-      totalVolume = volumeData.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    }
+    const { data: recentTx } = await client.from('transactions').select('*').order('created_at', { ascending: false }).limit(20);
+    const { data: recentUsers } = await client.from('users').select('wallet_address, referral_code, created_at').order('created_at', { ascending: false }).limit(20);
 
     return NextResponse.json({
       success: true,

@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
+const RARITIES = ['fanpin', 'lingpin', 'xuanpin', 'xianpin', 'shenpin'] as const;
+
 export async function GET() {
   try {
     const client = getSupabaseClient();
     const { data, error } = await client.from('admin_settings').select('*').eq('id', 1).maybeSingle();
     if (error) throw new Error(error.message);
+    if (!data) throw new Error('Settings not found');
     return NextResponse.json({ success: true, data });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -16,19 +19,34 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { password, ...settings } = body;
-
-    // Verify admin password
     const client = getSupabaseClient();
-    const { data: current, error: fetchError } = await client.from('admin_settings').select('admin_password').eq('id', 1).maybeSingle();
-    if (fetchError) throw new Error(fetchError.message);
 
-    if (password !== current?.admin_password) {
-      return NextResponse.json({ success: false, error: 'Invalid password' }, { status: 403 });
+    const allowedFields = [
+      'price_usdt', 'prob_fanpin', 'prob_lingpin', 'prob_xuanpin', 'prob_xianpin', 'prob_shenpin',
+      'recycle_fanpin', 'recycle_lingpin', 'recycle_xuanpin', 'recycle_xianpin', 'recycle_shenpin',
+      'trade_fee_rate', 'recycle_fee_rate', 'withdraw_fee_rate',
+      'commission_l1', 'commission_l2', 'referral_enabled', 'min_withdraw',
+      'collection_wallet', 'payout_wallet',
+      'usdt_contract', 'busd_contract', 'trx_contract', 'nft_contract_address',
+      'admin_password',
+    ];
+
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const key of allowedFields) {
+      if (body[key] !== undefined) {
+        updateData[key] = body[key];
+      }
     }
 
-    // Remove password from update data, unless changing it
-    const updateData = { ...settings, updated_at: new Date().toISOString() };
+    // Validate probabilities sum to ~100
+    if (RARITIES.some(r => body[`prob_${r}`] !== undefined)) {
+      const { data: current } = await client.from('admin_settings').select('*').eq('id', 1).maybeSingle();
+      const settings = { ...current, ...updateData };
+      const total = RARITIES.reduce((sum, r) => sum + parseFloat(String(settings[`prob_${r}`]) || '0'), 0);
+      if (Math.abs(total - 100) > 0.1) {
+        return NextResponse.json({ success: false, error: `Probabilities must sum to 100, current sum: ${total}` }, { status: 400 });
+      }
+    }
 
     const { error } = await client.from('admin_settings').update(updateData).eq('id', 1);
     if (error) throw new Error(error.message);

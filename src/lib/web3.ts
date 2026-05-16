@@ -25,6 +25,18 @@ export const ERC20_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
 ];
 
+// Currency decimals on BSC
+export const CURRENCY_DECIMALS: Record<string, number> = {
+  BNB: 18,
+  USDT: 18,
+  BUSD: 18,
+  TRX: 18,
+};
+
+// Currency info for display
+export const CURRENCIES = ['BNB', 'USDT', 'BUSD', 'TRX'] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
 export function getProvider(): ethers.BrowserProvider | null {
   if (typeof window === 'undefined') return null;
   const win = window as unknown as { ethereum?: { isMetaMask?: boolean; isTrust?: boolean; isWalletConnect?: boolean } };
@@ -43,7 +55,6 @@ export async function switchToBSC(): Promise<boolean> {
     return true;
   } catch (switchError: unknown) {
     const err = switchError as { code?: number };
-    // Chain not added yet
     if (err.code === 4902) {
       try {
         await win.ethereum.request({
@@ -123,6 +134,21 @@ export async function sendERC20(
   } catch {
     return null;
   }
+}
+
+// Send payment to collection wallet based on currency
+export async function sendPayment(
+  currency: Currency,
+  contractAddress: string | undefined,
+  toAddress: string,
+  amount: string
+): Promise<string | null> {
+  if (currency === 'BNB') {
+    return sendBNB(toAddress, amount);
+  }
+  if (!contractAddress) return null;
+  const decimals = CURRENCY_DECIMALS[currency] || 18;
+  return sendERC20(contractAddress, toAddress, amount, decimals);
 }
 
 // Generate referral code from wallet address
