@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       if (!nft) throw new Error('NFT not found or not held');
 
       // Check payout wallet configured
-      if (!settings.payout_wallet) throw new Error('Platform payout wallet not configured');
+      if (!settings.payout_wallet) return NextResponse.json({ success: false, error: 'Platform payout wallet not configured' }, { status: 400 });
 
       const recycleKey = `recycle_${nft.rarity}` as keyof typeof settings;
       const recyclePrice = parseFloat(settings[recycleKey] as string);

@@ -54,6 +54,7 @@ export default function HomePage() {
   const [inventoryFilter, setInventoryFilter] = useState('held');
   const [sellModal, setSellModal] = useState<Record<string, unknown> | null>(null);
   const [listPrice, setListPrice] = useState('');
+  const [actionError, setActionError] = useState('');
   const [giftTo, setGiftTo] = useState('');
   const [actionType, setActionType] = useState<'sell' | 'list' | 'gift' | null>(null);
 
@@ -159,6 +160,7 @@ export default function HomePage() {
 
   const handleSell = async (nftId: number) => {
     if (!wallet) return;
+    setActionError('');
     try {
       const res = await fetch('/api/inventory', {
         method: 'POST',
@@ -167,11 +169,13 @@ export default function HomePage() {
       });
       const json = await res.json();
       if (json.success) { setSellModal(null); loadInventory(); loadSettings(); }
-    } catch { /* ignore */ }
+      else { setActionError(json.error || 'Sell failed'); }
+    } catch (err) { setActionError('Network error'); }
   };
 
   const handleList = async (nftId: number) => {
     if (!wallet || !listPrice) return;
+    setActionError('');
     try {
       const res = await fetch('/api/inventory', {
         method: 'POST',
@@ -180,11 +184,13 @@ export default function HomePage() {
       });
       const json = await res.json();
       if (json.success) { setSellModal(null); setListPrice(''); loadInventory(); }
-    } catch { /* ignore */ }
+      else { setActionError(json.error || 'List failed'); }
+    } catch (err) { setActionError('Network error'); }
   };
 
   const handleGift = async (nftId: number) => {
     if (!wallet || !giftTo) return;
+    setActionError('');
     try {
       const res = await fetch('/api/inventory', {
         method: 'POST',
@@ -193,7 +199,8 @@ export default function HomePage() {
       });
       const json = await res.json();
       if (json.success) { setSellModal(null); setGiftTo(''); loadInventory(); }
-    } catch { /* ignore */ }
+      else { setActionError(json.error || 'Gift failed'); }
+    } catch (err) { setActionError('Network error'); }
   };
 
   const handleCancelListing = async (nftId: number) => {
@@ -388,9 +395,9 @@ export default function HomePage() {
                           <p className="text-xs text-gray-500">#{nft.id as number}</p>
                           {status === 'held' && wallet && (
                             <div className="flex gap-1 mt-2">
-                              <button onClick={() => { setSellModal(nft); setActionType('sell'); }} className="flex-1 text-xs py-1 rounded bg-purple-600/80 hover:bg-purple-500">{t('inventory.sell.platform', lang)}</button>
-                              <button onClick={() => { setSellModal(nft); setActionType('list'); }} className="flex-1 text-xs py-1 rounded bg-blue-600/80 hover:bg-blue-500">{t('inventory.sell.market', lang)}</button>
-                              <button onClick={() => { setSellModal(nft); setActionType('gift'); }} className="text-xs py-1 px-2 rounded bg-white/10 hover:bg-white/20">{t('inventory.gift', lang)}</button>
+                              <button onClick={() => { setSellModal(nft); setActionType('sell'); setActionError(''); }} className="flex-1 text-xs py-1 rounded bg-purple-600/80 hover:bg-purple-500">{t('inventory.sell.platform', lang)}</button>
+                              <button onClick={() => { setSellModal(nft); setActionType('list'); setActionError(''); }} className="flex-1 text-xs py-1 rounded bg-blue-600/80 hover:bg-blue-500">{t('inventory.sell.market', lang)}</button>
+                              <button onClick={() => { setSellModal(nft); setActionType('gift'); setActionError(''); }} className="text-xs py-1 px-2 rounded bg-white/10 hover:bg-white/20">{t('inventory.gift', lang)}</button>
                             </div>
                           )}
                           {status === 'listed' && (
@@ -410,9 +417,10 @@ export default function HomePage() {
                 <div className="bg-[#1a1230] rounded-2xl p-5 max-w-xs mx-4 w-full" onClick={(e) => e.stopPropagation()}>
                   {actionType === 'sell' && (() => {
                     const rarity = sellModal.rarity as string;
-                    const recyclePrice = parseFloat(settings[`recycle_${rarity}`] as string);
-                    const fee = recyclePrice * parseFloat(settings.recycle_fee_rate) / 100;
+                    const recyclePrice = parseFloat(settings[`recycle_${rarity}` as string] as string) || 0;
+                    const fee = recyclePrice * parseFloat(settings.recycle_fee_rate as string) / 100;
                     const receive = recyclePrice - fee;
+                    const payoutReady = !!settings.payout_wallet;
                     return (
                       <>
                         <p className="text-sm font-medium mb-3">{t('inventory.sell.platform', lang)} - {t(`rarity.${rarity}`, lang)}</p>
@@ -421,7 +429,7 @@ export default function HomePage() {
                           <div className="flex justify-between"><span className="text-gray-400">{t('inventory.sell.fee', lang)}</span><span className="text-red-400">-{fee.toFixed(2)}</span></div>
                           <div className="flex justify-between font-bold"><span>{t('inventory.sell.receive', lang)}</span><span className="text-green-400">{receive.toFixed(2)} USDT</span></div>
                         </div>
-                        <button onClick={() => handleSell(sellModal.id as number)} className="w-full py-2.5 rounded-xl bg-purple-600 text-sm font-medium">{t('inventory.sell.confirm', lang)}</button>
+                        <button onClick={() => handleSell(sellModal.id as number)} disabled={!payoutReady} className={`w-full py-2.5 rounded-xl text-sm font-medium ${payoutReady ? 'bg-purple-600 hover:bg-purple-500' : 'bg-gray-600 cursor-not-allowed'}`}>{payoutReady ? t('inventory.sell.confirm', lang) : t('inventory.sell.disabled', lang)}</button>
                       </>
                     );
                   })()}
@@ -440,7 +448,8 @@ export default function HomePage() {
                       <button onClick={() => handleGift(sellModal.id as number)} className="w-full py-2.5 rounded-xl bg-green-600 text-sm font-medium">{t('inventory.gift.confirm', lang)}</button>
                     </>
                   )}
-                  <button onClick={() => { setSellModal(null); setActionType(null); }} className="w-full mt-2 py-2 text-xs text-gray-400">{t('common.cancel', lang)}</button>
+                  {actionError && <p className="text-xs text-red-400 text-center mb-2">{actionError}</p>}
+                  <button onClick={() => { setSellModal(null); setActionType(null); setActionError(''); }} className="w-full mt-2 py-2 text-xs text-gray-400">{t('common.cancel', lang)}</button>
                 </div>
               </div>
             )}
