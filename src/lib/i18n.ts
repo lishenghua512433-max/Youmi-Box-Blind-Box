@@ -30,6 +30,8 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'blindbox.error': 'Purchase failed. Please try again.',
     'blindbox.min': 'Min 1',
     'blindbox.max': 'Max 99',
+    'blindbox.fee': 'Fee',
+    'blindbox.fee.free': 'FREE',
 
     // Rarity
     'rarity.fanpin': 'Common',
@@ -162,6 +164,8 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'blindbox.error': '购买失败，请重试。',
     'blindbox.min': '最少1个',
     'blindbox.max': '最多99个',
+    'blindbox.fee': '手续费',
+    'blindbox.fee.free': '免手续费',
 
     // Rarity
     'rarity.fanpin': '凡品',
