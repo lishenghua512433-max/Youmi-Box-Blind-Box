@@ -479,6 +479,25 @@ export default function HomePage() {
         {/* ===== MARKET TAB ===== */}
         {tab === 'market' && (
           <div className="space-y-3">
+            {/* 平台兜底回收价展示 */}
+            <div className="bg-gradient-to-r from-purple-900/40 to-indigo-900/40 rounded-xl p-4 border border-purple-500/30">
+              <div className="text-center mb-3">
+                <span className="text-sm font-bold text-purple-300">{t('market.recycle.title', lang)}</span>
+                <span className="text-xs text-gray-400 ml-2">(USDT)</span>
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {RARITIES.map((r) => (
+                  <div key={r} className="text-center">
+                    <div className={`text-xs font-medium mb-1 ${r === 'fanpin' ? 'text-gray-400' : r === 'lingpin' ? 'text-blue-400' : r === 'xuanpin' ? 'text-purple-400' : r === 'xianpin' ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {t(`rarity.${r}`, lang)}
+                    </div>
+                    <div className="text-lg font-bold text-white">
+                      {settings ? Number(settings[`recycle_${r}`] as string | number || 0).toFixed(1) : '0.0'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <p className="text-xs text-gray-500">{t('market.fee.note', lang)}</p>
             {listings.length === 0 ? (
               <div className="text-center py-12 text-gray-500">{t('market.empty', lang)}</div>
