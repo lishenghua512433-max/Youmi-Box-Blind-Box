@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { i18n, Lang, t } from '@/lib/i18n';
-import { connectWallet, isBSCNetwork, switchToBSC, sendPayment, CURRENCIES, Currency, CURRENCY_DECIMALS } from '@/lib/web3';
+import { connectWallet, disconnectWallet, isBSCNetwork, switchToBSC, sendPayment, CURRENCIES, Currency, CURRENCY_DECIMALS } from '@/lib/web3';
 
 const RARITIES = ['fanpin', 'lingpin', 'xuanpin', 'xianpin', 'shenpin'] as const;
 const RARITY_COLORS: Record<string, string> = {
@@ -132,6 +132,12 @@ export default function HomePage() {
   const handleConnect = async () => {
     const addr = await connectWallet();
     if (addr) setWallet(addr);
+  };
+
+  const handleDisconnect = async () => {
+    await disconnectWallet();
+    setWallet(null);
+    setTab('blindbox');
   };
 
   const handleBuy = async () => {
@@ -276,7 +282,10 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             <button onClick={() => setLang(lang === 'en' ? 'zh' : 'en')} className="text-xs px-2 py-1 rounded border border-white/10 hover:bg-white/5">{t('lang.switch', lang)}</button>
             {wallet ? (
-              <span className="text-xs text-green-400">{wallet.slice(0, 6)}...{wallet.slice(-4)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-green-400">{wallet.slice(0, 6)}...{wallet.slice(-4)}</span>
+                <button onClick={handleDisconnect} className="text-xs px-2 py-1 rounded-lg bg-red-600/80 hover:bg-red-500 text-white">{t('nav.disconnect', lang)}</button>
+              </div>
             ) : (
               <button onClick={handleConnect} className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500">{t('nav.connect', lang)}</button>
             )}

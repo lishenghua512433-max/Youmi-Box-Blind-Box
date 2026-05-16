@@ -100,6 +100,17 @@ export async function connectWallet(): Promise<string | null> {
   }
 }
 
+export async function disconnectWallet(): Promise<void> {
+  try {
+    const win = window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } };
+    if (win.ethereum) {
+      await win.ethereum.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }).catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export async function sendBNB(toAddress: string, amount: string): Promise<string | null> {
   try {
     const provider = getProvider();
