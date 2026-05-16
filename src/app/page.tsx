@@ -323,11 +323,7 @@ export default function HomePage() {
               <span className="font-bold text-lg">{(parseFloat(settings.price_usdt) * quantity).toFixed(2)} USDT</span>
             </div>
 
-            {/* Fee display */}
-            <div className="flex justify-between items-center bg-white/5 rounded-xl px-4 py-3">
-              <span className="text-gray-400 text-sm">{t('blindbox.fee', lang)}</span>
-              <span className="text-sm font-medium text-green-400">{t('blindbox.fee.free', lang)}</span>
-            </div>
+
 
             {/* Buy button */}
             <button onClick={handleBuy} disabled={buying || !wallet} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed">
