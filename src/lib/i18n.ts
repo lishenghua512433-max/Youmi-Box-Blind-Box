@@ -159,6 +159,9 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'history.status.completed': 'Completed',
     'history.status.pending': 'Pending',
     'history.related': 'Related Wallet',
+    'safe.title': 'Youmi Box - Digital Collectibles',
+    'safe.desc': 'A platform for discovering and collecting unique digital items on BSC.',
+    'safe.disclaimer': 'All digital items are for collection purposes only. This platform does not provide any financial advice, investment returns, or profit guarantees. Users should participate rationally.',
   },
   zh: {
     // Header
@@ -318,6 +321,9 @@ export const i18n: Record<Lang, Record<string, string>> = {
     'history.status.completed': '已完成',
     'history.status.pending': '处理中',
     'history.related': '关联钱包',
+    'safe.title': '优秘盒 - 数字藏品',
+    'safe.desc': '基于BSC链的数字藏品收集与展示平台。',
+    'safe.disclaimer': '所有数字藏品仅供收藏展示，本平台不提供任何理财建议、投资回报或盈利承诺，请理性参与。',
   },
 };
 

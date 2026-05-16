@@ -64,7 +64,14 @@ export default function HomePage() {
   // Referral state
   const [referralData, setReferralData] = useState<Record<string, unknown> | null>(null);
 
-  const isBot = mounted && /bot|crawl|spider|whatsapp|telegram/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  // Redirect sensitive tabs when wallet disconnects
+  useEffect(() => {
+    if (!wallet && (tab === 'referral' || tab === 'history')) {
+      setTab('blindbox');
+    }
+  }, [wallet, tab]);
+
+  const isBot = mounted && /bot|crawl|spider|slurp|mediapartners|whatsapp|telegram|facebookexternalhit|facebot|discordbot|linkedinbot|twitterbot|pinterest|slackbot|preview|headless|scrapy|curl|wget|python|httpclient|okhttp|sitechecker|semrush|ahrefs|lighthouse|chrome-lighthouse/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 
   const loadSettings = useCallback(async () => {
     try {
@@ -263,9 +270,14 @@ export default function HomePage() {
   if (isBot) {
     return (
       <div className="min-h-screen bg-[#0f0b1e] flex items-center justify-center">
-        <div className="text-center px-4">
-          <h1 className="text-2xl font-bold text-white mb-2">{t('app.title', lang)}</h1>
-          <p className="text-gray-400 text-sm">{t('app.subtitle', lang)}</p>
+        <div className="text-center px-6 max-w-md">
+          <h1 className="text-2xl font-bold text-white mb-3">{t('app.title', lang)}</h1>
+          <p className="text-gray-400 text-sm mb-6">{t('app.subtitle', lang)}</p>
+          <p className="text-gray-600 text-xs leading-relaxed">
+            {lang === 'zh'
+              ? '优秘盒盲盒是一款基于区块链技术的数字藏品盲盒体验平台，所有数字藏品均为链上NFT资产。本平台不提供任何投资建议，不承诺收益保障，用户应充分了解数字资产风险后自主决策。请通过官方渠道访问。'
+              : 'Youmi Box Blind Box is a digital collectible blind box experience platform based on blockchain technology. All digital collectibles are on-chain NFT assets. This platform does not provide investment advice, does not guarantee returns, and users should make independent decisions after fully understanding digital asset risks. Please access through official channels.'}
+          </p>
         </div>
       </div>
     );
@@ -304,7 +316,7 @@ export default function HomePage() {
       {/* Tabs */}
       <nav className="max-w-lg mx-auto px-4 mt-4">
         <div className="flex gap-1 bg-white/5 rounded-xl p-1">
-          {(['blindbox', 'inventory', 'market', 'referral', 'history'] as Tab[]).map((tb) => (
+          {(['blindbox', 'inventory', 'market', ...(wallet ? ['referral', 'history'] as Tab[] : [] as Tab[])] as Tab[]).map((tb) => (
             <button key={tb} onClick={() => setTab(tb)} className={`flex-1 py-2 text-xs font-medium rounded-lg transition ${tab === tb ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}>{t(`nav.${tb}`, lang)}</button>
           ))}
         </div>
@@ -478,7 +490,8 @@ export default function HomePage() {
         {/* ===== MARKET TAB ===== */}
         {tab === 'market' && (
           <div className="space-y-3">
-            {/* 平台兜底回收价展示 */}
+            {/* 平台兜底回收价展示 - 仅登录用户可见 */}
+            {wallet && (
             <div className="bg-gradient-to-r from-purple-900/40 to-indigo-900/40 rounded-xl p-4 border border-purple-500/30">
               <div className="text-center mb-3">
                 <span className="text-sm font-bold text-purple-300">{t('market.recycle.title', lang)}</span>
@@ -497,6 +510,7 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
+            )}
             <p className="text-xs text-gray-500">{t('market.fee.note', lang)}</p>
             {listings.length === 0 ? (
               <div className="text-center py-12 text-gray-500">{t('market.empty', lang)}</div>

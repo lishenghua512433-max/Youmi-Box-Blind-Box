@@ -2,8 +2,17 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Youmi Box Blind Box - BSC NFT Blind Box',
-  description: 'Youmi Box Blind Box, get rare collections easily, gain stable profits & earn commission by inviting friends',
+  title: 'Youmi Box - Digital Collectibles',
+  description: 'Discover and collect unique digital items on BSC blockchain.',
+  other: {
+    'og:title': 'Youmi Box - Digital Collectibles',
+    'og:description': 'Discover and collect unique digital items on BSC blockchain.',
+  },
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
