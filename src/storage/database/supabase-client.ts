@@ -1,11 +1,33 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { execSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
 
 let envLoaded = false;
 
-interface SupabaseCredentials {
-  url: string;
-  anonKey: string;
+/**
+ * Parse a .env file and set variables into process.env
+ * Works on Windows, Linux, macOS without any external dependency
+ */
+function parseEnvFile(filePath: string): void {
+  if (!existsSync(filePath)) return;
+  const content = readFileSync(filePath, 'utf-8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = trimmed.substring(0, eqIndex).trim();
+    let value = trimmed.substring(eqIndex + 1).trim();
+    // Remove surrounding quotes
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
 }
 
 function loadEnv(): void {
@@ -13,17 +35,33 @@ function loadEnv(): void {
     return;
   }
 
+  // 1) Try .env.local / .env files (works on Windows/Linux/macOS)
   try {
-    try {
-      require('dotenv').config();
-      if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
-        envLoaded = true;
-        return;
-      }
-    } catch {
-      // dotenv not available
+    const projectRoot = resolve(process.cwd());
+    parseEnvFile(resolve(projectRoot, '.env.local'));
+    parseEnvFile(resolve(projectRoot, '.env'));
+    if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
+      envLoaded = true;
+      return;
     }
+  } catch {
+    // file read failed, continue
+  }
 
+  // 2) Try dotenv package if available
+  try {
+    require('dotenv').config({ path: resolve(process.cwd(), '.env.local') });
+    require('dotenv').config();
+    if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
+      envLoaded = true;
+      return;
+    }
+  } catch {
+    // dotenv not available
+  }
+
+  // 3) Coze platform specific: load from workload identity (Linux only)
+  try {
     const pythonCode = `
 import os
 import sys
@@ -63,8 +101,13 @@ except Exception as e:
 
     envLoaded = true;
   } catch {
-    // Silently fail
+    // Silently fail - Coze platform not available (e.g. local Windows deployment)
   }
+}
+
+interface SupabaseCredentials {
+  url: string;
+  anonKey: string;
 }
 
 function getSupabaseCredentials(): SupabaseCredentials {
