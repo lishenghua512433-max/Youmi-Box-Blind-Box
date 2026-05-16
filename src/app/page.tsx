@@ -362,9 +362,8 @@ export default function HomePage() {
             <div className="bg-white/5 rounded-xl p-4">
               <div className="grid grid-cols-5 gap-1 text-center">
                 {RARITIES.map((r) => (
-                  <div key={r} className="space-y-1">
+                  <div key={r}>
                     <div className={`text-xs font-medium ${RARITY_COLORS[r]?.split(' ')[0] || 'text-gray-400'}`}>{t(`rarity.${r}`, lang)}</div>
-                    <div className="text-xs text-gray-500">{settings[`prob_${r}`]}%</div>
                   </div>
                 ))}
               </div>
