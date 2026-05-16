@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       // Platform recycle
       const { data: nft, error: nftError } = await client.from('nft_inventory').select('*').eq('id', nft_id).eq('wallet_address', wallet).eq('status', 'held').maybeSingle();
       if (nftError) throw new Error(nftError.message);
-      if (!nft) throw new Error('NFT not found or not held');
+      if (!nft) return NextResponse.json({ success: false, error: 'NFT not found or not held' }, { status: 400 });
 
       // Check payout wallet configured
       if (!settings.payout_wallet) return NextResponse.json({ success: false, error: 'Platform payout wallet not configured' }, { status: 400 });
@@ -56,12 +56,13 @@ export async function POST(request: Request) {
       const feeAmount = (recyclePrice * feeRate).toFixed(8);
       const receiveAmount = (recyclePrice - parseFloat(feeAmount)).toFixed(8);
 
-      await client.from('nft_inventory').update({
+      const { error: sellUpdateError } = await client.from('nft_inventory').update({
         status: 'sold',
         sold_at: new Date().toISOString(),
       }).eq('id', nft_id);
+      if (sellUpdateError) throw new Error(sellUpdateError.message);
 
-      await client.from('transactions').insert({
+      const { error: sellTxError } = await client.from('transactions').insert({
         wallet_address: wallet,
         type: 'sell_nft',
         amount: recyclePrice.toFixed(8),
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
         nft_id,
         status: 'completed',
       });
+      if (sellTxError) console.error('Sell transaction error:', sellTxError.message);
 
       return NextResponse.json({
         success: true,
@@ -82,20 +84,22 @@ export async function POST(request: Request) {
     if (action === 'list') {
       // List on market
       const price = body.price;
-      if (!price || price <= 0) throw new Error('Invalid listing price');
+      if (!price || price <= 0) return NextResponse.json({ success: false, error: 'Invalid listing price' }, { status: 400 });
 
       const { data: nft, error: nftError } = await client.from('nft_inventory').select('*').eq('id', nft_id).eq('wallet_address', wallet).eq('status', 'held').maybeSingle();
       if (nftError) throw new Error(nftError.message);
-      if (!nft) throw new Error('NFT not found or not held');
+      if (!nft) return NextResponse.json({ success: false, error: 'NFT not found or not held' }, { status: 400 });
 
-      await client.from('nft_inventory').update({ status: 'listed' }).eq('id', nft_id);
-      await client.from('trade_listings').insert({
+      const { error: updateStatusError } = await client.from('nft_inventory').update({ status: 'listed' }).eq('id', nft_id);
+      if (updateStatusError) throw new Error(updateStatusError.message);
+      const { error: insertListingError } = await client.from('trade_listings').insert({
         nft_id,
         seller_wallet: wallet,
         rarity: nft.rarity,
         price: price.toFixed(8),
         status: 'active',
       });
+      if (insertListingError) throw new Error(insertListingError.message);
 
       return NextResponse.json({ success: true, data: { nft_id, price: price.toFixed(8) } });
     }
@@ -103,20 +107,22 @@ export async function POST(request: Request) {
     if (action === 'gift') {
       // Gift NFT
       const giftTo = body.gift_to;
-      if (!giftTo) throw new Error('Recipient wallet required');
+      if (!giftTo) return NextResponse.json({ success: false, error: 'Recipient wallet required' }, { status: 400 });
+      if (giftTo.toLowerCase() === wallet.toLowerCase()) return NextResponse.json({ success: false, error: 'Cannot gift to yourself' }, { status: 400 });
 
       const { data: nft, error: nftError } = await client.from('nft_inventory').select('*').eq('id', nft_id).eq('wallet_address', wallet).eq('status', 'held').maybeSingle();
       if (nftError) throw new Error(nftError.message);
-      if (!nft) throw new Error('NFT not found or not held');
+      if (!nft) return NextResponse.json({ success: false, error: 'NFT not found or not held' }, { status: 400 });
 
-      await client.from('nft_inventory').update({
+      const { error: giftUpdateError } = await client.from('nft_inventory').update({
         wallet_address: giftTo,
-        status: 'gifted',
+        status: 'held',
         gifted_to: giftTo,
         gifted_at: new Date().toISOString(),
       }).eq('id', nft_id);
+      if (giftUpdateError) throw new Error(giftUpdateError.message);
 
-      await client.from('transactions').insert({
+      const { error: giftTxError } = await client.from('transactions').insert({
         wallet_address: wallet,
         type: 'gift_nft',
         amount: '0',
@@ -134,11 +140,14 @@ export async function POST(request: Request) {
 
     if (action === 'cancel_listing') {
       // Cancel market listing
-      const { data: listing } = await client.from('trade_listings').select('*').eq('nft_id', nft_id).eq('seller_wallet', wallet).eq('status', 'active').maybeSingle();
-      if (!listing) throw new Error('Active listing not found');
+      const { data: listing, error: listingQueryError } = await client.from('trade_listings').select('*').eq('nft_id', nft_id).eq('seller_wallet', wallet).eq('status', 'active').maybeSingle();
+      if (listingQueryError) throw new Error(listingQueryError.message);
+      if (!listing) return NextResponse.json({ success: false, error: 'Active listing not found' }, { status: 400 });
 
-      await client.from('trade_listings').update({ status: 'cancelled', cancelled_at: new Date().toISOString() }).eq('id', listing.id);
-      await client.from('nft_inventory').update({ status: 'held' }).eq('id', nft_id);
+      const { error: cancelError } = await client.from('trade_listings').update({ status: 'cancelled', cancelled_at: new Date().toISOString() }).eq('id', listing.id);
+      if (cancelError) throw new Error(cancelError.message);
+      const { error: restoreError } = await client.from('nft_inventory').update({ status: 'held' }).eq('id', nft_id);
+      if (restoreError) throw new Error(restoreError.message);
 
       return NextResponse.json({ success: true });
     }

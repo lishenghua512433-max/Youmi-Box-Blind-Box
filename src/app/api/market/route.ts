@@ -32,8 +32,8 @@ export async function POST(request: Request) {
     // Get listing
     const { data: listing, error: listingError } = await client.from('trade_listings').select('*').eq('id', listing_id).eq('status', 'active').maybeSingle();
     if (listingError) throw new Error(listingError.message);
-    if (!listing) throw new Error('Listing not found or already sold');
-    if (listing.seller_wallet === buyer_wallet) throw new Error('Cannot buy your own listing');
+    if (!listing) return NextResponse.json({ success: false, error: 'Listing not found or already sold' }, { status: 400 });
+    if (listing.seller_wallet === buyer_wallet) return NextResponse.json({ success: false, error: 'Cannot buy your own listing' }, { status: 400 });
 
     // Get settings
     const { data: settings } = await client.from('admin_settings').select('*').eq('id', 1).maybeSingle();
@@ -44,21 +44,24 @@ export async function POST(request: Request) {
     const buyerFee = (price * feeRate).toFixed(8);
     const sellerFee = (price * feeRate).toFixed(8);
     const sellerReceive = (price - parseFloat(sellerFee)).toFixed(8);
+    const buyerTotal = (price + parseFloat(buyerFee)).toFixed(8);
 
     // Update listing status
-    await client.from('trade_listings').update({ status: 'sold' }).eq('id', listing_id);
+    const { error: updateListingError } = await client.from('trade_listings').update({ status: 'sold' }).eq('id', listing_id);
+    if (updateListingError) throw new Error(updateListingError.message);
 
     // Transfer NFT to buyer
-    await client.from('nft_inventory').update({
+    const { error: transferError } = await client.from('nft_inventory').update({
       wallet_address: buyer_wallet,
       status: 'held',
     }).eq('id', listing.nft_id);
+    if (transferError) throw new Error(transferError.message);
 
     // Record buyer transaction
-    await client.from('transactions').insert({
+    const { error: buyerTxError } = await client.from('transactions').insert({
       wallet_address: buyer_wallet,
       type: 'market_buy',
-      amount: price.toFixed(8),
+      amount: buyerTotal,
       currency: 'USDT',
       fee_amount: buyerFee,
       receive_amount: '0',
@@ -67,9 +70,10 @@ export async function POST(request: Request) {
       related_wallet: listing.seller_wallet,
       status: 'completed',
     });
+    if (buyerTxError) console.error('Buyer transaction error:', buyerTxError.message);
 
     // Record seller transaction
-    await client.from('transactions').insert({
+    const { error: sellerTxError } = await client.from('transactions').insert({
       wallet_address: listing.seller_wallet,
       type: 'market_sell',
       amount: price.toFixed(8),
@@ -81,6 +85,7 @@ export async function POST(request: Request) {
       related_wallet: buyer_wallet,
       status: 'completed',
     });
+    if (sellerTxError) console.error('Seller transaction error:', sellerTxError.message);
 
     return NextResponse.json({
       success: true,
@@ -89,6 +94,7 @@ export async function POST(request: Request) {
         rarity: listing.rarity,
         price: price.toFixed(8),
         buyer_fee: buyerFee,
+        buyer_total: buyerTotal,
         seller_fee: sellerFee,
         seller_receive: sellerReceive,
       },
