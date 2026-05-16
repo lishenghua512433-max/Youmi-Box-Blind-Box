@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { sendPayoutToUser, checkPayoutBalance } from '@/lib/blockchain';
 
 export async function GET(request: Request) {
   try {
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }
 
@@ -88,10 +89,54 @@ export async function POST(request: Request) {
     const feeAmount = (balance * feeRate).toFixed(8);
     const receiveAmount = (balance - parseFloat(feeAmount)).toFixed(8);
 
-    // Delete commissions (already settled)
+    // =============================================
+    // AUTO-PAYOUT: Send USDT from payout wallet to user
+    // Per spec: "所有收益自动发放BSC-USDT，全自动到账"
+    // =============================================
+    let payoutTxHash: string | null = null;
+    let payoutStatus = 'pending';
+    const usdtContract = settings.usdt_contract as string;
+
+    try {
+      if (usdtContract && receiveAmount && parseFloat(receiveAmount) > 0) {
+        // Check payout wallet balance first
+        const balanceCheck = await checkPayoutBalance(receiveAmount, 'USDT', usdtContract);
+        if (!balanceCheck.sufficient) {
+          throw new Error(`Insufficient USDT in payout wallet. Balance: ${balanceCheck.balance}, Required: ${balanceCheck.required}. Please try again later.`);
+        }
+
+        // Execute on-chain payout
+        const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', usdtContract);
+        payoutTxHash = payoutResult.txHash;
+        payoutStatus = payoutResult.status;
+      }
+    } catch (payoutErr) {
+      const payoutErrorMsg = payoutErr instanceof Error ? payoutErr.message : 'Payout failed';
+      console.error(`Payout failed for commission withdrawal ${wallet}:`, payoutErrorMsg);
+
+      // Record with payout_failed status so admin knows to process manually
+      await client.from('transactions').insert({
+        wallet_address: wallet,
+        type: 'withdraw_commission',
+        amount: balance.toFixed(8),
+        currency: 'USDT',
+        fee_amount: feeAmount,
+        receive_amount: receiveAmount,
+        quantity: 1,
+        tx_hash: null,
+        status: 'payout_failed',
+      });
+
+      return NextResponse.json({
+        success: false,
+        error: `Auto-payout failed: ${payoutErrorMsg}. Your commission withdrawal has been recorded. Please contact admin.`,
+      }, { status: 400 });
+    }
+
+    // Payout succeeded - delete commissions (already settled)
     await client.from('commissions').delete().eq('wallet_address', wallet);
 
-    // Create transaction
+    // Create transaction with payout tx_hash
     await client.from('transactions').insert({
       wallet_address: wallet,
       type: 'withdraw_commission',
@@ -100,7 +145,8 @@ export async function POST(request: Request) {
       fee_amount: feeAmount,
       receive_amount: receiveAmount,
       quantity: 1,
-      status: 'completed',
+      tx_hash: payoutTxHash,
+      status: payoutStatus === 'confirmed' ? 'completed' : 'pending',
     });
 
     return NextResponse.json({
@@ -110,6 +156,8 @@ export async function POST(request: Request) {
         fee: feeAmount,
         receive: receiveAmount,
         wallet,
+        payout_tx_hash: payoutTxHash,
+        payout_status: payoutStatus,
       },
     });
   } catch (err) {

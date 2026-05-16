@@ -25,12 +25,12 @@ export const ERC20_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
 ];
 
-// Currency decimals on BSC
+// Currency decimals on BSC (TRX is 6 decimals on BSC)
 export const CURRENCY_DECIMALS: Record<string, number> = {
   BNB: 18,
   USDT: 18,
   BUSD: 18,
-  TRX: 18,
+  TRX: 6,
 };
 
 // Currency info for display
@@ -148,6 +148,7 @@ export async function sendERC20(
 }
 
 // Send payment to collection wallet based on currency
+// Returns txHash on success, null on failure
 export async function sendPayment(
   currency: Currency,
   contractAddress: string | undefined,
@@ -160,6 +161,48 @@ export async function sendPayment(
   if (!contractAddress) return null;
   const decimals = CURRENCY_DECIMALS[currency] || 18;
   return sendERC20(contractAddress, toAddress, amount, decimals);
+}
+
+// Send payment with detailed result (for market trades & verified purchases)
+export interface PaymentResult {
+  success: boolean;
+  txHash: string | null;
+  error?: string;
+}
+
+export async function sendPaymentWithResult(
+  currency: Currency,
+  contractAddress: string | undefined,
+  toAddress: string,
+  amount: string
+): Promise<PaymentResult> {
+  try {
+    if (currency === 'BNB') {
+      const provider = getProvider();
+      if (!provider) return { success: false, txHash: null, error: 'No wallet provider' };
+      const signer = await provider.getSigner();
+      const tx = await signer.sendTransaction({
+        to: toAddress,
+        value: ethers.parseEther(amount),
+      });
+      await tx.wait();
+      return { success: true, txHash: tx.hash };
+    }
+
+    if (!contractAddress) return { success: false, txHash: null, error: 'No contract address' };
+    const decimals = CURRENCY_DECIMALS[currency] || 18;
+    const provider = getProvider();
+    if (!provider) return { success: false, txHash: null, error: 'No wallet provider' };
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(contractAddress, ERC20_ABI, signer);
+    const parsedAmount = ethers.parseUnits(amount, decimals);
+    const tx = await contract.transfer(toAddress, parsedAmount);
+    await tx.wait();
+    return { success: true, txHash: tx.hash };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Payment failed';
+    return { success: false, txHash: null, error: message };
+  }
 }
 
 // Generate referral code from wallet address

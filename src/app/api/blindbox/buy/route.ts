@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { verifyOnChainPayment } from '@/lib/blockchain';
 
 const RARITIES = ['fanpin', 'lingpin', 'xuanpin', 'xianpin', 'shenpin'] as const;
 
@@ -11,6 +12,16 @@ function drawRarity(probabilities: Record<string, number>): string {
     if (rand < cumulative) return r;
   }
   return RARITIES[RARITIES.length - 1];
+}
+
+// Get contract address for a currency from settings
+function getContractAddress(settings: Record<string, string | number | boolean>, currency: string): string | undefined {
+  const map: Record<string, string> = {
+    USDT: settings.usdt_contract as string,
+    BUSD: settings.busd_contract as string,
+    TRX: settings.trx_contract as string,
+  };
+  return map[currency.toUpperCase()];
 }
 
 export async function POST(request: Request) {
@@ -35,8 +46,44 @@ export async function POST(request: Request) {
     if (settingsError) throw new Error(settingsError.message);
     if (!settings) throw new Error('Settings not found');
 
-    const pricePerBox = parseFloat(settings.price_usdt);
+    const pricePerBox = parseFloat(settings.price_usdt as string);
     const totalPrice = pricePerBox * qty;
+
+    // =============================================
+    // ON-CHAIN PAYMENT VERIFICATION (when tx_hash provided)
+    // =============================================
+    if (tx_hash) {
+      const collectionWallet = settings.collection_wallet as string;
+      const contractAddress = getContractAddress(settings, currency);
+
+      const verification = await verifyOnChainPayment({
+        txHash: tx_hash,
+        expectedFrom: wallet,
+        expectedTo: collectionWallet,
+        expectedAmount: totalPrice.toFixed(8),
+        currency: currency.toUpperCase(),
+        contractAddress,
+        tolerancePercent: 2, // 2% tolerance for BNB price fluctuation
+      });
+
+      if (!verification.valid) {
+        return NextResponse.json({
+          success: false,
+          error: `Payment verification failed: ${verification.reason}`,
+          verification,
+        }, { status: 400 });
+      }
+    } else {
+      // No tx_hash provided - check if collection_wallet is configured
+      // If configured, require payment verification
+      if (settings.collection_wallet) {
+        return NextResponse.json({
+          success: false,
+          error: 'Payment verification required. Please provide tx_hash after completing the blockchain payment.',
+        }, { status: 400 });
+      }
+      // If no collection_wallet configured (dev/test mode), allow without verification
+    }
 
     // Build probability map
     const probabilities: Record<string, number> = {};
@@ -64,12 +111,12 @@ export async function POST(request: Request) {
         }
       }
 
-      const { data: newUser, error: userError } = await client.from('users').insert({
+      const { data: newUser, error: userError } = await client.from('users').upsert({
         wallet_address: wallet,
         referral_code: referralCode,
         parent_code: parentCode,
         parent_l2_code: parentL2Code,
-      }).select().single();
+      }, { onConflict: 'wallet_address' }).select().single();
       if (userError) throw new Error(userError.message);
       user = newUser;
     }
@@ -97,10 +144,10 @@ export async function POST(request: Request) {
       currency: currency.toUpperCase(),
       fee_amount: '0',
       receive_amount: '0',
-      quantity: quantity,
+      quantity: qty,
       nft_id: results[0].nftId,
       tx_hash: tx_hash || null,
-      status: 'completed',
+      status: tx_hash ? 'confirmed' : 'completed',
     });
     if (txResult.error) console.error('Transaction insert error:', txResult.error.message);
 
@@ -109,7 +156,7 @@ export async function POST(request: Request) {
     const referralEnabled = settings.referral_enabled === true || settings.referral_enabled === 'true';
     if (referralEnabled && user.parent_code) {
       // Level 1 (Direct)
-      const commissionL1 = (totalPrice * parseFloat(settings.commission_l1) / 100).toFixed(8);
+      const commissionL1 = (totalPrice * parseFloat(settings.commission_l1 as string) / 100).toFixed(8);
       const { data: l1User } = await client.from('users').select('wallet_address').eq('referral_code', user.parent_code).maybeSingle();
       if (l1User) {
         await client.from('commissions').insert({
@@ -122,7 +169,7 @@ export async function POST(request: Request) {
 
       // Level 2 (Indirect)
       if (user.parent_l2_code) {
-        const commissionL2 = (totalPrice * parseFloat(settings.commission_l2) / 100).toFixed(8);
+        const commissionL2 = (totalPrice * parseFloat(settings.commission_l2 as string) / 100).toFixed(8);
         const { data: l2User } = await client.from('users').select('wallet_address').eq('referral_code', user.parent_l2_code).maybeSingle();
         if (l2User) {
           await client.from('commissions').insert({
@@ -143,6 +190,7 @@ export async function POST(request: Request) {
         price_per_box: pricePerBox,
         total_price: totalPrice.toFixed(8),
         currency: currency.toUpperCase(),
+        tx_hash: tx_hash || null,
       },
     });
   } catch (err) {

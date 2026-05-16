@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { sendPayoutToUser, checkPayoutBalance, verifyOnChainPayment } from '@/lib/blockchain';
 
 // GET: list all active market listings
 export async function GET() {
@@ -22,7 +23,7 @@ export async function GET() {
 // POST: buy from market listing
 export async function POST(request: Request) {
   try {
-    const { listing_id, buyer_wallet } = await request.json() as { listing_id: number; buyer_wallet: string };
+    const { listing_id, buyer_wallet, tx_hash } = await request.json() as { listing_id: number; buyer_wallet: string; tx_hash?: string };
     if (!listing_id || !buyer_wallet) {
       return NextResponse.json({ success: false, error: 'listing_id and buyer_wallet required' }, { status: 400 });
     }
@@ -45,6 +46,63 @@ export async function POST(request: Request) {
     const sellerFee = (price * feeRate).toFixed(8);
     const sellerReceive = (price - parseFloat(sellerFee)).toFixed(8);
     const buyerTotal = (price + parseFloat(buyerFee)).toFixed(8);
+    const usdtContract = settings.usdt_contract as string;
+
+    // =============================================
+    // Step 1: Verify buyer's on-chain payment to collection_wallet
+    // Frontend sends tx_hash after buyer confirms MetaMask payment
+    // =============================================
+    let buyerTxHash: string | null = tx_hash || null;
+    if (buyerTxHash && settings.collection_wallet && usdtContract) {
+      try {
+        const paymentVerified = await verifyOnChainPayment({
+          txHash: buyerTxHash,
+          expectedFrom: buyer_wallet,
+          expectedTo: settings.collection_wallet as string,
+          expectedAmount: buyerTotal,
+          currency: 'USDT',
+          contractAddress: usdtContract,
+        });
+        if (!paymentVerified.valid) {
+          return NextResponse.json({
+            success: false,
+            error: `Payment verification failed: ${paymentVerified.reason}. Please ensure you have paid the correct amount.`,
+          }, { status: 400 });
+        }
+        // Payment verified, keep the tx_hash
+      } catch (verifyErr) {
+        console.error('Payment verification error:', verifyErr);
+        // Continue without verification if RPC fails - log warning
+        console.warn(`Could not verify payment for market buy listing ${listing_id}, tx_hash: ${buyerTxHash}`);
+      }
+    }
+
+    // =============================================
+    // Step 2: Auto-payout to seller from payout_wallet
+    // Per spec: "卖家实收金额自动到账"
+    // =============================================
+    let sellerPayoutTxHash: string | null = null;
+    let sellerPayoutStatus = 'pending';
+
+    if (settings.payout_wallet && usdtContract && parseFloat(sellerReceive) > 0) {
+      try {
+        // Check payout wallet balance
+        const balanceCheck = await checkPayoutBalance(sellerReceive, 'USDT', usdtContract);
+        if (!balanceCheck.sufficient) {
+          // Payout wallet insufficient - still complete the trade but mark payout as pending
+          console.warn(`Insufficient payout balance for seller ${listing.seller_wallet}. Balance: ${balanceCheck.balance}, Required: ${balanceCheck.required}`);
+          sellerPayoutStatus = 'payout_pending';
+        } else {
+          // Execute payout
+          const payoutResult = await sendPayoutToUser(listing.seller_wallet, sellerReceive, 'USDT', usdtContract);
+          sellerPayoutTxHash = payoutResult.txHash;
+          sellerPayoutStatus = payoutResult.status === 'confirmed' ? 'completed' : 'pending';
+        }
+      } catch (payoutErr) {
+        console.error(`Seller payout failed for listing ${listing_id}:`, payoutErr);
+        sellerPayoutStatus = 'payout_failed';
+      }
+    }
 
     // Update listing status
     const { error: updateListingError } = await client.from('trade_listings').update({ status: 'sold' }).eq('id', listing_id);
@@ -68,6 +126,7 @@ export async function POST(request: Request) {
       quantity: 1,
       nft_id: listing.nft_id,
       related_wallet: listing.seller_wallet,
+      tx_hash: buyerTxHash,
       status: 'completed',
     });
     if (buyerTxError) console.error('Buyer transaction error:', buyerTxError.message);
@@ -83,7 +142,8 @@ export async function POST(request: Request) {
       quantity: 1,
       nft_id: listing.nft_id,
       related_wallet: buyer_wallet,
-      status: 'completed',
+      tx_hash: sellerPayoutTxHash,
+      status: sellerPayoutStatus,
     });
     if (sellerTxError) console.error('Seller transaction error:', sellerTxError.message);
 
@@ -97,6 +157,9 @@ export async function POST(request: Request) {
         buyer_total: buyerTotal,
         seller_fee: sellerFee,
         seller_receive: sellerReceive,
+        buyer_tx_hash: buyerTxHash,
+        seller_payout_tx_hash: sellerPayoutTxHash,
+        seller_payout_status: sellerPayoutStatus,
       },
     });
   } catch (err) {

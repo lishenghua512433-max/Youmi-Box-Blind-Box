@@ -159,26 +159,50 @@ export default function HomePage() {
       const contractMap: Record<string, string> = { USDT: settings.usdt_contract, BUSD: settings.busd_contract, TRX: settings.trx_contract };
       const contractAddr = contractMap[currency] || '';
 
-      // Send payment to collection wallet
+      // Calculate total price
+      const totalPrice = (parseFloat(settings.price_usdt) * quantity).toFixed(8);
+
+      // =============================================
+      // Step 1: Send on-chain payment to collection wallet
+      // This MUST succeed before creating the NFT
+      // =============================================
+      let txHash: string = '';
       if (settings.collection_wallet) {
-        const txHash = await sendPayment(currency, contractAddr, settings.collection_wallet, (parseFloat(settings.price_usdt) * quantity).toFixed(8));
-        if (!txHash && currency !== 'BNB') {
-          // For ERC20, try anyway (user may have already approved)
+        try {
+          const paymentResult = await sendPayment(currency, contractAddr, settings.collection_wallet, totalPrice);
+          if (!paymentResult) {
+            throw new Error('Payment was rejected or failed. Please confirm the transaction in your wallet.');
+          }
+          txHash = paymentResult;
+        } catch (payErr) {
+          const payMsg = payErr instanceof Error ? payErr.message : 'Payment failed';
+          setActionError(payMsg);
+          setBuying(false);
+          return; // Stop - payment failed, no NFT created
         }
       }
 
+      // =============================================
+      // Step 2: Call API with tx_hash for verification
+      // Backend will verify the on-chain payment before creating NFT
+      // =============================================
       const res = await fetch('/api/blindbox/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, currency, quantity, tx_hash: '' }),
+        body: JSON.stringify({ wallet, currency, quantity, tx_hash: txHash }),
       });
       const json = await res.json();
       if (json.success) {
         setOpenResult({ rarity: json.data.results[0].rarity, quantity: json.data.quantity });
         loadSettings();
         loadInventory();
+      } else {
+        setActionError(json.error || 'Purchase failed');
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setActionError(msg);
+    }
     setBuying(false);
   };
 
@@ -241,20 +265,66 @@ export default function HomePage() {
   };
 
   const handleMarketBuy = async (listingId: number) => {
-    if (!wallet) return;
+    if (!wallet || !settings) return;
+    setActionError('');
     try {
+      const onBsc = await isBSCNetwork();
+      if (!onBsc) await switchToBSC();
+
+      // Find listing to get price
+      const listing = listings.find((l: Record<string, unknown>) => l.id === listingId);
+      if (!listing) return;
+
+      const price = parseFloat(listing.price as string);
+      const feeRate = parseFloat(settings.trade_fee_rate) / 100;
+      const buyerFee = price * feeRate;
+      const buyerTotal = (price + buyerFee).toFixed(8);
+
+      // =============================================
+      // Step 1: Buyer sends on-chain payment to collection wallet
+      // Price + buyer fee goes to platform, seller receives payout from payout wallet
+      // =============================================
+      let txHash: string = '';
+      const usdtContract = settings.usdt_contract;
+      if (settings.collection_wallet && usdtContract) {
+        try {
+          const paymentResult = await sendPayment('USDT', usdtContract, settings.collection_wallet, buyerTotal);
+          if (!paymentResult) {
+            throw new Error('Payment was rejected or failed. Please confirm the transaction in your wallet.');
+          }
+          txHash = paymentResult;
+        } catch (payErr) {
+          const payMsg = payErr instanceof Error ? payErr.message : 'Payment failed';
+          setActionError(payMsg);
+          return; // Stop - payment failed
+        }
+      }
+
+      // =============================================
+      // Step 2: Call API with tx_hash for verification
+      // Backend verifies payment + auto-payouts to seller
+      // =============================================
       const res = await fetch('/api/market', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ listing_id: listingId, buyer_wallet: wallet }),
+        body: JSON.stringify({ listing_id: listingId, buyer_wallet: wallet, tx_hash: txHash }),
       });
       const json = await res.json();
-      if (json.success) { loadMarket(); loadInventory(); }
-    } catch { /* ignore */ }
+      if (json.success) {
+        loadMarket();
+        loadInventory();
+      } else {
+        setActionError(json.error || 'Purchase failed');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setActionError(msg);
+    }
   };
 
   const handleWithdraw = async () => {
     if (!wallet) return;
+    setActionError('');
     try {
       const res = await fetch('/api/referral', {
         method: 'POST',
@@ -262,8 +332,15 @@ export default function HomePage() {
         body: JSON.stringify({ wallet }),
       });
       const json = await res.json();
-      if (json.success) loadReferral();
-    } catch { /* ignore */ }
+      if (json.success) {
+        loadReferral();
+      } else {
+        setActionError(json.error || 'Withdrawal failed');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Withdrawal failed';
+      setActionError(msg);
+    }
   };
 
   // Bot page - simple clean page without sensitive content

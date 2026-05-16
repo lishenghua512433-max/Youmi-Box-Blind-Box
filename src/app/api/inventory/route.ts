@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { sendPayoutToUser, checkPayoutBalance } from '@/lib/blockchain';
 
 export async function GET(request: Request) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
     if (!settings) throw new Error('Settings not found');
 
     if (action === 'sell') {
-      // Platform recycle
+      // Platform recycle with auto-payout
       const { data: nft, error: nftError } = await client.from('nft_inventory').select('*').eq('id', nft_id).eq('wallet_address', wallet).eq('status', 'held').maybeSingle();
       if (nftError) throw new Error(nftError.message);
       if (!nft) return NextResponse.json({ success: false, error: 'NFT not found or not held' }, { status: 400 });
@@ -52,16 +53,74 @@ export async function POST(request: Request) {
 
       const recycleKey = `recycle_${nft.rarity}` as keyof typeof settings;
       const recyclePrice = parseFloat(settings[recycleKey] as string);
-      const feeRate = parseFloat(settings.recycle_fee_rate) / 100;
+      const feeRate = parseFloat(settings.recycle_fee_rate as string) / 100;
       const feeAmount = (recyclePrice * feeRate).toFixed(8);
       const receiveAmount = (recyclePrice - parseFloat(feeAmount)).toFixed(8);
 
+      // =============================================
+      // AUTO-PAYOUT: Send USDT from payout wallet to user
+      // Per spec: "所有收益自动发放BSC-USDT，全自动到账"
+      // =============================================
+      let payoutTxHash: string | null = null;
+      let payoutStatus = 'pending';
+
+      try {
+        const usdtContract = settings.usdt_contract as string;
+        if (usdtContract && receiveAmount && parseFloat(receiveAmount) > 0) {
+          // Check payout wallet balance first
+          const balanceCheck = await checkPayoutBalance(receiveAmount, 'USDT', usdtContract);
+          if (!balanceCheck.sufficient) {
+            return NextResponse.json({
+              success: false,
+              error: `Insufficient USDT in payout wallet. Balance: ${balanceCheck.balance} USDT, Required: ${balanceCheck.required} USDT. Please contact admin.`,
+            }, { status: 400 });
+          }
+
+          // Execute on-chain payout
+          const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', usdtContract);
+          payoutTxHash = payoutResult.txHash;
+          payoutStatus = payoutResult.status;
+        }
+      } catch (payoutErr) {
+        const payoutErrorMsg = payoutErr instanceof Error ? payoutErr.message : 'Payout failed';
+        // If payout fails, still mark as pending (admin can manually process)
+        console.error(`Payout failed for sell_nft ${nft_id}:`, payoutErrorMsg);
+        payoutStatus = 'payout_failed';
+
+        // Record with pending status so admin knows payout didn't go through
+        await client.from('nft_inventory').update({
+          status: 'sold',
+          sold_at: new Date().toISOString(),
+        }).eq('id', nft_id);
+
+        await client.from('transactions').insert({
+          wallet_address: wallet,
+          type: 'sell_nft',
+          amount: recyclePrice.toFixed(8),
+          currency: 'USDT',
+          fee_amount: feeAmount,
+          receive_amount: receiveAmount,
+          quantity: 1,
+          nft_id,
+          tx_hash: null,
+          status: 'payout_failed',
+        });
+
+        return NextResponse.json({
+          success: false,
+          error: `Auto-payout failed: ${payoutErrorMsg}. Your NFT has been recorded as sold. Please contact admin for manual payout.`,
+          data: { nft_id, rarity: nft.rarity, recycle_price: recyclePrice.toFixed(8), fee: feeAmount, receive: receiveAmount, payout_status: 'failed' },
+        }, { status: 400 });
+      }
+
+      // Payout succeeded - update NFT status
       const { error: sellUpdateError } = await client.from('nft_inventory').update({
         status: 'sold',
         sold_at: new Date().toISOString(),
       }).eq('id', nft_id);
       if (sellUpdateError) throw new Error(sellUpdateError.message);
 
+      // Record transaction with payout tx_hash
       const { error: sellTxError } = await client.from('transactions').insert({
         wallet_address: wallet,
         type: 'sell_nft',
@@ -71,13 +130,23 @@ export async function POST(request: Request) {
         receive_amount: receiveAmount,
         quantity: 1,
         nft_id,
-        status: 'completed',
+        tx_hash: payoutTxHash,
+        status: payoutStatus === 'confirmed' ? 'completed' : 'pending',
       });
       if (sellTxError) console.error('Sell transaction error:', sellTxError.message);
 
       return NextResponse.json({
         success: true,
-        data: { nft_id, rarity: nft.rarity, recycle_price: recyclePrice.toFixed(8), fee: feeAmount, receive: receiveAmount, wallet },
+        data: {
+          nft_id,
+          rarity: nft.rarity,
+          recycle_price: recyclePrice.toFixed(8),
+          fee: feeAmount,
+          receive: receiveAmount,
+          payout_tx_hash: payoutTxHash,
+          payout_status: payoutStatus,
+          wallet,
+        },
       });
     }
 
