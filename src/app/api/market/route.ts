@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import { sendPayoutToUser, checkPayoutBalance, verifyOnChainPayment } from '@/lib/blockchain';
+import { sendPayoutToUser, getPlatformBalance, verifyOnChainPayment, executeTradeSplit } from '@/lib/blockchain';
 
 // GET: list all active market listings
 export async function GET() {
@@ -87,16 +87,15 @@ export async function POST(request: Request) {
     if (settings.payout_wallet && usdtContract && parseFloat(sellerReceive) > 0) {
       try {
         // Check payout wallet balance
-        const balanceCheck = await checkPayoutBalance(sellerReceive, 'USDT', usdtContract);
-        if (!balanceCheck.sufficient) {
-          // Payout wallet insufficient - still complete the trade but mark payout as pending
-          console.warn(`Insufficient payout balance for seller ${listing.seller_wallet}. Balance: ${balanceCheck.balance}, Required: ${balanceCheck.required}`);
+        const balanceStr = await getPlatformBalance('USDT', usdtContract);
+        if (parseFloat(balanceStr) < parseFloat(sellerReceive)) {
+          console.warn(`Insufficient platform balance for seller payout. Balance: ${balanceStr}, Required: ${sellerReceive}`);
           sellerPayoutStatus = 'payout_pending';
         } else {
-          // Execute payout
-          const payoutResult = await sendPayoutToUser(listing.seller_wallet, sellerReceive, 'USDT', usdtContract);
-          sellerPayoutTxHash = payoutResult.txHash;
-          sellerPayoutStatus = payoutResult.status === 'confirmed' ? 'completed' : 'pending';
+          // Execute trade split: platform pays seller their share (fee kept in platform wallet)
+          const tradeResult = await executeTradeSplit(listing.seller_wallet, String(price), settings.trade_fee_rate, 'USDT');
+          sellerPayoutTxHash = tradeResult.sellerTxHash;
+          sellerPayoutStatus = 'completed';
         }
       } catch (payoutErr) {
         console.error(`Seller payout failed for listing ${listing_id}:`, payoutErr);

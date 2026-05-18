@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import { sendPayoutToUser, checkPayoutBalance } from '@/lib/blockchain';
+import { sendPayoutToUser, getPlatformBalance } from '@/lib/blockchain';
 
 export async function GET(request: Request) {
   try {
@@ -68,15 +68,15 @@ export async function POST(request: Request) {
         const usdtContract = settings.usdt_contract as string;
         if (usdtContract && receiveAmount && parseFloat(receiveAmount) > 0) {
           // Check payout wallet balance first
-          const balanceCheck = await checkPayoutBalance(receiveAmount, 'USDT', usdtContract);
-          if (!balanceCheck.sufficient) {
+          const balanceStr = await getPlatformBalance('USDT', usdtContract);
+          if (parseFloat(balanceStr) < parseFloat(receiveAmount)) {
             return NextResponse.json({
               success: false,
-              error: `Insufficient USDT in payout wallet. Balance: ${balanceCheck.balance} USDT, Required: ${balanceCheck.required} USDT. Please contact admin.`,
+              error: `Insufficient USDT in payout wallet. Balance: ${balanceStr} USDT, Required: ${receiveAmount} USDT. Please contact admin.`,
             }, { status: 400 });
           }
 
-          // Execute on-chain payout
+          // Execute on-chain payout (platform wallet → user wallet)
           const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', usdtContract);
           payoutTxHash = payoutResult.txHash;
           payoutStatus = payoutResult.status;
