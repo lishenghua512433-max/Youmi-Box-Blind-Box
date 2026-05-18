@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import { sendPayoutToUser, getPlatformBalance } from '@/lib/blockchain';
+import { sendPayoutToUser, getContractBalance } from '@/lib/blockchain';
 
 export async function GET(request: Request) {
   try {
@@ -81,8 +81,9 @@ export async function POST(request: Request) {
     const minWithdraw = parseFloat(settings.min_withdraw);
     if (balance < minWithdraw) throw new Error(`Minimum withdrawal is ${minWithdraw} USDT`);
 
-    // Check payout wallet
-    if (!settings.payout_wallet) throw new Error('Platform payout wallet not configured');
+    // Check payout contract
+    const payoutContractAddr = settings.payout_contract_address as string;
+    if (!payoutContractAddr) throw new Error('Payout contract not configured. Please deploy YoumiPayoutPool contract first.');
 
     // Calculate fee
     const feeRate = parseFloat(settings.withdraw_fee_rate) / 100;
@@ -90,8 +91,8 @@ export async function POST(request: Request) {
     const receiveAmount = (balance - parseFloat(feeAmount)).toFixed(8);
 
     // =============================================
-    // AUTO-PAYOUT: Send USDT from payout wallet to user
-    // Per spec: "所有收益自动发放BSC-USDT，全自动到账"
+    // AUTO-PAYOUT: Send USDT from payout contract to user
+    // 资金流向: 佣金提现 → 智能合约资金池自动转出 → 用户钱包
     // =============================================
     let payoutTxHash: string | null = null;
     let payoutStatus = 'pending';
@@ -99,14 +100,14 @@ export async function POST(request: Request) {
 
     try {
       if (usdtContract && receiveAmount && parseFloat(receiveAmount) > 0) {
-        // Check payout wallet balance first
-        const balanceStr = await getPlatformBalance('USDT', usdtContract);
+        // Check contract pool balance first
+        const balanceStr = await getContractBalance(payoutContractAddr, 'USDT', usdtContract);
         if (parseFloat(balanceStr) < parseFloat(receiveAmount)) {
-          throw new Error(`Insufficient USDT in payout wallet. Balance: ${balanceStr}, Required: ${receiveAmount}. Please try again later.`);
+          throw new Error(`Insufficient USDT in payout contract. Balance: ${balanceStr}, Required: ${receiveAmount}. Please try again later.`);
         }
 
-        // Execute on-chain payout
-        const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', usdtContract);
+        // Execute on-chain payout from contract
+        const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', payoutContractAddr, usdtContract, 'commission');
         payoutTxHash = payoutResult.txHash || null;
         payoutStatus = payoutResult.status === 'confirmed' ? 'completed' : 'pending';
       }

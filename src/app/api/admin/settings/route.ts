@@ -28,7 +28,7 @@ export async function PUT(request: Request) {
       'recycle_fanpin', 'recycle_lingpin', 'recycle_xuanpin', 'recycle_xianpin', 'recycle_shenpin',
       'trade_fee_rate', 'recycle_fee_rate', 'withdraw_fee_rate',
       'commission_l1', 'commission_l2', 'referral_enabled', 'min_withdraw',
-      'collection_wallet', 'payout_wallet',
+      'collection_wallet', 'payout_wallet', 'payout_contract_address',
       'usdt_contract', 'busd_contract', 'trx_contract', 'nft_contract_address',
       'admin_password',
     ];

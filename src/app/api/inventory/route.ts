@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import { sendPayoutToUser, getPlatformBalance } from '@/lib/blockchain';
+import { sendPayoutToUser, getContractBalance } from '@/lib/blockchain';
 
 export async function GET(request: Request) {
   try {
@@ -48,8 +48,9 @@ export async function POST(request: Request) {
       if (nftError) throw new Error(nftError.message);
       if (!nft) return NextResponse.json({ success: false, error: 'NFT not found or not held' }, { status: 400 });
 
-      // Check payout wallet configured
-      if (!settings.payout_wallet) return NextResponse.json({ success: false, error: 'Platform payout wallet not configured' }, { status: 400 });
+      // Check payout contract configured
+      const payoutContractAddr = settings.payout_contract_address as string;
+      if (!payoutContractAddr) return NextResponse.json({ success: false, error: 'Payout contract not configured. Please deploy YoumiPayoutPool contract first.' }, { status: 400 });
 
       const recycleKey = `recycle_${nft.rarity}` as keyof typeof settings;
       const recyclePrice = parseFloat(settings[recycleKey] as string);
@@ -58,8 +59,8 @@ export async function POST(request: Request) {
       const receiveAmount = (recyclePrice - parseFloat(feeAmount)).toFixed(8);
 
       // =============================================
-      // AUTO-PAYOUT: Send USDT from payout wallet to user
-      // Per spec: "所有收益自动发放BSC-USDT，全自动到账"
+      // AUTO-PAYOUT: Send USDT from payout contract to user
+      // 资金流向: 平台回收 → 智能合约资金池自动转出 → 用户钱包
       // =============================================
       let payoutTxHash: string | null = null;
       let payoutStatus = 'pending';
@@ -67,17 +68,17 @@ export async function POST(request: Request) {
       try {
         const usdtContract = settings.usdt_contract as string;
         if (usdtContract && receiveAmount && parseFloat(receiveAmount) > 0) {
-          // Check payout wallet balance first
-          const balanceStr = await getPlatformBalance('USDT', usdtContract);
+          // Check contract pool balance first
+          const balanceStr = await getContractBalance(payoutContractAddr, 'USDT', usdtContract);
           if (parseFloat(balanceStr) < parseFloat(receiveAmount)) {
             return NextResponse.json({
               success: false,
-              error: `Insufficient USDT in payout wallet. Balance: ${balanceStr} USDT, Required: ${receiveAmount} USDT. Please contact admin.`,
+              error: `Insufficient USDT in payout contract. Balance: ${balanceStr} USDT, Required: ${receiveAmount} USDT. Please fund the contract.`,
             }, { status: 400 });
           }
 
-          // Execute on-chain payout (platform wallet → user wallet)
-          const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', usdtContract);
+          // Execute on-chain payout (contract pool → user wallet)
+          const payoutResult = await sendPayoutToUser(wallet, receiveAmount, 'USDT', payoutContractAddr, usdtContract, 'recycle');
           payoutTxHash = payoutResult.txHash;
           payoutStatus = payoutResult.status;
         }

@@ -1,12 +1,15 @@
 import { ethers } from 'ethers';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // ============================================================
 // Server-side blockchain utilities for BSC chain operations
-// UNIFIED WALLET ARCHITECTURE:
-//   - Collection wallet (receives): blind box payments + trade fees
-//   - Payout wallet (sends): NFT recycling + commission withdrawal
-//   - Both set to same address: 0x61866D26BC800D3Ce52cD4Ca82857f53F7C546C5
+// SMART CONTRACT ARCHITECTURE:
+//   - Collection wallet (receives): 盲盒购买全款 + 交易手续费 → 直达私人钱包
+//   - Payout Contract (sends): NFT回收兑付 + 佣金发放 + 交易卖家本金 → 从合约出款
+//   - Admin wallet = 私人钱包 0x61866D26BC800D3Ce52cD4Ca82857f53F7C546C5
 //   - Private key ONLY from server env var, NEVER exposed to frontend
+//   - Contract address stored in database admin_settings.payout_contract_address
 // ============================================================
 
 // BSC Mainnet RPC
@@ -23,14 +26,19 @@ const TOKEN_DECIMALS: Record<string, number> = {
   TRX: 6,
 };
 
-// Minimal ERC20 ABI
+// Minimal ERC20 ABI for balance check
 const ERC20_ABI = [
   'function transfer(address to, uint256 amount) returns (bool)',
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-  'function approve(address spender, uint256 amount) returns (bool)',
 ];
+
+// Load YoumiPayoutPool contract ABI
+function getContractABI(): ethers.InterfaceAbi {
+  const artifactPath = path.join(process.cwd(), 'contracts', 'YoumiPayoutPool.json');
+  const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8'));
+  return artifact.abi;
+}
 
 function getProvider(): ethers.JsonRpcProvider {
   return new ethers.JsonRpcProvider(BSC_RPC);
@@ -63,84 +71,95 @@ export function getPlatformWalletAddress(): string | null {
   }
 }
 
-// ============================================================
-// SEND: Platform wallet → User wallet (auto-payout)
-// Used for: NFT recycling, commission withdrawal
-// ============================================================
-
-async function sendBNB(
-  signer: ethers.Wallet,
-  toAddress: string,
-  amount: string
-): Promise<{ txHash: string; status: string }> {
-  const balance = await getProvider().getBalance(signer.address);
-  const amountWei = ethers.parseEther(amount);
-  const gasReserve = ethers.parseEther('0.005');
-  if (balance < amountWei + gasReserve) {
-    throw new Error(`Insufficient BNB in platform wallet. Balance: ${ethers.formatEther(balance)} BNB, Need: ${amount} BNB`);
-  }
-  const tx = await signer.sendTransaction({ to: toAddress, value: amountWei });
-  const receipt = await tx.wait(1);
-  if (!receipt || receipt.status !== 1) {
-    throw new Error(`BNB transfer failed on chain. TxHash: ${tx.hash}`);
-  }
-  return { txHash: tx.hash, status: 'confirmed' };
+/**
+ * Get connected payout contract instance
+ * Requires contract address parameter (from database settings)
+ */
+function getPayoutContract(contractAddress: string): ethers.Contract {
+  const signer = getPlatformSigner();
+  const abi = getContractABI();
+  return new ethers.Contract(contractAddress, abi, signer);
 }
 
-async function sendERC20(
-  signer: ethers.Wallet,
-  contractAddress: string,
-  toAddress: string,
-  amount: string,
-  decimals: number = 18
-): Promise<{ txHash: string; status: string }> {
-  const contract = new ethers.Contract(contractAddress, ERC20_ABI, signer);
-  const balance = await contract.balanceOf(signer.address);
-  const parsedAmount = ethers.parseUnits(amount, decimals);
-  if (balance < parsedAmount) {
-    throw new Error(`Insufficient token in platform wallet. Have: ${ethers.formatUnits(balance, decimals)}, Need: ${amount}`);
-  }
-  const tx = await contract.transfer(toAddress, parsedAmount);
-  const receipt = await tx.wait(1);
-  if (!receipt || receipt.status !== 1) {
-    throw new Error(`Token transfer failed on chain. TxHash: ${tx.hash}`);
-  }
-  return { txHash: tx.hash, status: 'confirmed' };
-}
+// ============================================================
+// CONTRACT PAYOUT: Smart Contract → User wallet
+// Used for: NFT recycling, commission withdrawal, trade seller payment
+// All payouts go through the YoumiPayoutPool smart contract
+// ============================================================
 
 /**
- * Send payout from platform wallet to user wallet
- * All payouts are sent as the specified currency (default USDT per spec)
+ * Send payout from smart contract pool to user wallet
+ * Contract owner (admin) calls payoutBNB or payoutToken
+ * 
+ * @param toAddress - User wallet address
+ * @param amount - Human-readable amount (e.g., "2.75")
+ * @param currency - BNB / USDT / BUSD / TRX
+ * @param contractAddress - YoumiPayoutPool contract address
+ * @param tokenAddress - ERC20 token contract address (required for non-BNB)
+ * @param reason - Payout reason: "recycle" / "commission" / "trade"
  */
 export async function sendPayoutToUser(
   toAddress: string,
   amount: string,
   currency: string = 'USDT',
-  contractAddress?: string
+  contractAddress: string,
+  tokenAddress?: string,
+  reason: string = 'payout'
 ): Promise<{ txHash: string; status: string }> {
-  const signer = getPlatformSigner();
-  if (currency === 'BNB') {
-    return sendBNB(signer, toAddress, amount);
-  }
   if (!contractAddress) {
-    throw new Error(`Contract address required for ${currency} payout`);
+    throw new Error('Payout contract address not configured. Please deploy and configure the YoumiPayoutPool contract.');
   }
+
+  const payoutContract = getPayoutContract(contractAddress);
   const decimals = TOKEN_DECIMALS[currency] || 18;
-  return sendERC20(signer, contractAddress, toAddress, amount, decimals);
+
+  if (currency === 'BNB') {
+    // Check contract BNB balance
+    const bnbBalance = await getProvider().getBalance(contractAddress);
+    const amountWei = ethers.parseEther(amount);
+    if (bnbBalance < amountWei) {
+      throw new Error(`Insufficient BNB in payout contract. Balance: ${ethers.formatEther(bnbBalance)} BNB, Required: ${amount} BNB. Please fund the contract.`);
+    }
+    const tx = await payoutContract.payoutBNB(toAddress, amountWei, reason);
+    const receipt = await tx.wait(1);
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(`BNB payout failed on chain. TxHash: ${tx.hash}`);
+    }
+    return { txHash: tx.hash, status: 'confirmed' };
+  } else {
+    // ERC20 token payout
+    if (!tokenAddress) {
+      throw new Error(`Token contract address required for ${currency} payout`);
+    }
+    // Check contract token balance
+    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, getProvider());
+    const tokenBalance = await tokenContract.balanceOf(contractAddress);
+    const parsedAmount = ethers.parseUnits(amount, decimals);
+    if (tokenBalance < parsedAmount) {
+      throw new Error(`Insufficient ${currency} in payout contract. Balance: ${ethers.formatUnits(tokenBalance, decimals)} ${currency}, Required: ${amount} ${currency}. Please fund the contract.`);
+    }
+    const tx = await payoutContract.payoutToken(toAddress, parsedAmount, tokenAddress, reason);
+    const receipt = await tx.wait(1);
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(`Token payout failed on chain. TxHash: ${tx.hash}`);
+    }
+    return { txHash: tx.hash, status: 'confirmed' };
+  }
 }
 
 /**
  * Auto split-payment for P2P trade:
- * 1. Buyer pays full amount to platform wallet (verified on-chain by frontend)
- * 2. Platform deducts fee and sends remaining to seller
- * 3. Fee stays in platform wallet automatically
+ * 1. Buyer pays full amount to admin private wallet (verified on-chain)
+ * 2. Contract pays seller their share (principal minus fee) from pool
+ * 3. Fee stays in admin private wallet (buyer already paid there)
  */
 export async function executeTradeSplit(
   sellerWallet: string,
   tradeAmount: string,
   feePercent: number,
   currency: string = 'USDT',
-  contractAddress?: string
+  contractAddress: string,
+  tokenAddress?: string
 ): Promise<{
   sellerTxHash: string;
   sellerReceiveAmount: string;
@@ -151,17 +170,15 @@ export async function executeTradeSplit(
   const fee = amount * feePercent / 100;
   const sellerReceives = amount - fee;
 
-  const signer = getPlatformSigner();
-
-  // Send seller's share (principal minus fee) from platform wallet
-  let result: { txHash: string; status: string };
-  if (currency === 'BNB') {
-    result = await sendBNB(signer, sellerWallet, sellerReceives.toFixed(8));
-  } else {
-    if (!contractAddress) throw new Error(`Contract address required for ${currency}`);
-    const decimals = TOKEN_DECIMALS[currency] || 18;
-    result = await sendERC20(signer, contractAddress, sellerWallet, sellerReceives.toFixed(8), decimals);
-  }
+  // Contract pays seller from pool
+  const result = await sendPayoutToUser(
+    sellerWallet,
+    sellerReceives.toFixed(8),
+    currency,
+    contractAddress,
+    tokenAddress,
+    'trade'
+  );
 
   return {
     sellerTxHash: result.txHash,
@@ -258,9 +275,36 @@ export async function verifyOnChainPayment(params: {
 }
 
 // ============================================================
-// BALANCE: Check platform wallet balance for safety
+// BALANCE: Check contract pool balance for safety checks
 // ============================================================
 
+/**
+ * Get payout contract pool balance
+ * This is the balance of the YoumiPayoutPool contract (used for payouts)
+ */
+export async function getContractBalance(
+  payoutContractAddress: string,
+  currency: string,
+  tokenAddress?: string
+): Promise<string> {
+  if (!payoutContractAddress) return '0';
+
+  const provider = getProvider();
+  if (currency === 'BNB') {
+    const balance = await provider.getBalance(payoutContractAddress);
+    return ethers.formatEther(balance);
+  }
+  if (!tokenAddress) return '0';
+  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+  const decimals = TOKEN_DECIMALS[currency] || 18;
+  const balance = await contract.balanceOf(payoutContractAddress);
+  return ethers.formatUnits(balance, decimals);
+}
+
+/**
+ * Get admin private wallet balance (for backward compatibility and info)
+ * This is the balance of the collection/payout wallet address
+ */
 export async function getPlatformBalance(
   currency: string,
   contractAddress?: string

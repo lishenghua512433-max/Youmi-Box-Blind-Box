@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import { sendPayoutToUser, getPlatformBalance, verifyOnChainPayment, executeTradeSplit } from '@/lib/blockchain';
+import { sendPayoutToUser, getContractBalance, verifyOnChainPayment } from '@/lib/blockchain';
 
 // GET: list all active market listings
 export async function GET() {
@@ -78,24 +78,25 @@ export async function POST(request: Request) {
     }
 
     // =============================================
-    // Step 2: Auto-payout to seller from payout_wallet
-    // Per spec: "卖家实收金额自动到账"
+    // Step 2: Auto-payout to seller from payout contract
+    // 资金流向: 买家付款→平台钱包(手续费留存) + 合约资金池→卖家(本金)
     // =============================================
     let sellerPayoutTxHash: string | null = null;
     let sellerPayoutStatus = 'pending';
 
-    if (settings.payout_wallet && usdtContract && parseFloat(sellerReceive) > 0) {
+    const payoutContractAddr = settings.payout_contract_address as string;
+    if (payoutContractAddr && usdtContract && parseFloat(sellerReceive) > 0) {
       try {
-        // Check payout wallet balance
-        const balanceStr = await getPlatformBalance('USDT', usdtContract);
+        // Check contract pool balance
+        const balanceStr = await getContractBalance(payoutContractAddr, 'USDT', usdtContract);
         if (parseFloat(balanceStr) < parseFloat(sellerReceive)) {
-          console.warn(`Insufficient platform balance for seller payout. Balance: ${balanceStr}, Required: ${sellerReceive}`);
+          console.warn(`Insufficient contract balance for seller payout. Balance: ${balanceStr}, Required: ${sellerReceive}`);
           sellerPayoutStatus = 'payout_pending';
         } else {
-          // Execute trade split: platform pays seller their share (fee kept in platform wallet)
-          const tradeResult = await executeTradeSplit(listing.seller_wallet, String(price), settings.trade_fee_rate, 'USDT');
-          sellerPayoutTxHash = tradeResult.sellerTxHash;
-          sellerPayoutStatus = 'completed';
+          // Execute payout from contract to seller
+          const payoutResult = await sendPayoutToUser(listing.seller_wallet, sellerReceive, 'USDT', payoutContractAddr, usdtContract, 'trade');
+          sellerPayoutTxHash = payoutResult.txHash || null;
+          sellerPayoutStatus = payoutResult.status === 'confirmed' ? 'completed' : 'pending';
         }
       } catch (payoutErr) {
         console.error(`Seller payout failed for listing ${listing_id}:`, payoutErr);

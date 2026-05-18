@@ -259,8 +259,12 @@ export default function AdminPage() {
                   <input type="text" value={settings.collection_wallet as string} onChange={(e) => updateField('collection_wallet', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 font-mono focus:outline-none focus:border-purple-500" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400">Payout Wallet (send USDT for recycle/withdraw)</label>
+                  <label className="text-xs text-gray-400">Payout Wallet (admin address)</label>
                   <input type="text" value={settings.payout_wallet as string} onChange={(e) => updateField('payout_wallet', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 font-mono focus:outline-none focus:border-purple-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400">Payout Contract Address (YoumiPayoutPool)</label>
+                  <input type="text" value={(settings.payout_contract_address as string) || ''} onChange={(e) => updateField('payout_contract_address', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 font-mono focus:outline-none focus:border-purple-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400">NFT Contract Address</label>
@@ -282,7 +286,7 @@ export default function AdminPage() {
                   <label className="text-xs text-gray-400">Admin Password</label>
                   <input type="text" value={settings.admin_password as string} onChange={(e) => updateField('admin_password', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
                 </div>
-                <button onClick={() => handleSave({ collection_wallet: settings.collection_wallet, payout_wallet: settings.payout_wallet, nft_contract_address: settings.nft_contract_address, usdt_contract: settings.usdt_contract, busd_contract: settings.busd_contract, trx_contract: settings.trx_contract, admin_password: settings.admin_password })} disabled={saving} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+                <button onClick={() => handleSave({ collection_wallet: settings.collection_wallet, payout_wallet: settings.payout_wallet, payout_contract_address: settings.payout_contract_address, nft_contract_address: settings.nft_contract_address, usdt_contract: settings.usdt_contract, busd_contract: settings.busd_contract, trx_contract: settings.trx_contract, admin_password: settings.admin_password })} disabled={saving} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
               </div>
             )}
 

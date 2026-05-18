@@ -26,6 +26,7 @@ export const adminSettings = pgTable('admin_settings', {
   busdContract: varchar('busd_contract', { length: 66 }).default('0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56'),
   trxContract: varchar('trx_contract', { length: 66 }).default('0x570A5D26f7765Ecb712C0924E4De545B89fD43dD'),
   nftContractAddress: varchar('nft_contract_address', { length: 66 }).default(''),
+  payoutContractAddress: varchar('payout_contract_address', { length: 66 }).default(''),
   adminPassword: varchar('admin_password', { length: 128 }).notNull().default('123456'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
