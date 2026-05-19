@@ -45,10 +45,22 @@ function getSupabaseClient(token?: string): SupabaseClient {
 
   let key: string;
   if (token) {
+    // User-facing requests (with auth token) use anon key + RLS
     key = anonKey;
   } else {
+    // Server-side API routes MUST use service_role_key to bypass RLS
+    // If not configured, throw a clear error instead of silently falling back
+    // to anon_key (which gets blocked by RLS and causes confusing 500 errors)
     const serviceRoleKey = getSupabaseServiceRoleKey();
-    key = serviceRoleKey ?? anonKey;
+    if (!serviceRoleKey) {
+      throw new Error(
+        'COZE_SUPABASE_SERVICE_ROLE_KEY is not set. ' +
+        'Server-side API routes require the service role key to bypass Row Level Security (RLS). ' +
+        'Please add it to your environment variables. ' +
+        'You can find it in Supabase Dashboard → Settings → API → service_role key.'
+      );
+    }
+    key = serviceRoleKey;
   }
 
   const globalOptions: Record<string, unknown> = {};

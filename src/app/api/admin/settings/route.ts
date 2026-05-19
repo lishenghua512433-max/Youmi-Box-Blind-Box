@@ -7,13 +7,25 @@ export async function GET() {
   try {
     const client = getSupabaseClient();
     const { data, error } = await client.from('admin_settings').select('*').eq('id', 1).maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error('Settings not found');
+    if (error) {
+      console.error('[admin/settings] Supabase query error:', error.message);
+      throw new Error(`Database error: ${error.message}`);
+    }
+    if (!data) {
+      console.error('[admin/settings] No data returned — table may be empty or RLS is blocking access');
+      throw new Error(
+        'Settings not found. Possible causes: ' +
+        '1) admin_settings table has no row with id=1; ' +
+        '2) COZE_SUPABASE_SERVICE_ROLE_KEY is missing (RLS blocks anon access). ' +
+        'Run the init SQL script to seed data.'
+      );
+    }
     // Remove admin password from public response
     const { admin_password, ...publicData } = data;
     return NextResponse.json({ success: true, data: publicData });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[admin/settings] GET failed:', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
