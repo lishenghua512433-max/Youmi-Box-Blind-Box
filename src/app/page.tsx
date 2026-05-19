@@ -57,6 +57,7 @@ export default function HomePage() {
   const [actionError, setActionError] = useState('');
   const [giftTo, setGiftTo] = useState('');
   const [actionType, setActionType] = useState<'sell' | 'list' | 'gift' | null>(null);
+  const [apiError, setApiError] = useState('');
 
   // Market state
   const [listings, setListings] = useState<Record<string, unknown>[]>([]);
@@ -77,8 +78,9 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/admin/settings');
       const json = await res.json();
-      if (json.success) setSettings(json.data);
-    } catch { /* ignore */ }
+      if (json.success) { setSettings(json.data); setApiError(''); }
+      else setApiError('Failed to load settings');
+    } catch { setApiError('Network error: cannot connect to server'); }
   }, []);
 
   const loadImages = useCallback(async () => {
@@ -88,9 +90,9 @@ export default function HomePage() {
       if (json.success) {
         const map: Record<string, string> = {};
         (json.data as { rarity: string; image_url: string }[]).forEach((img) => { map[img.rarity] = img.image_url; });
-        setImages(map);
-      }
-    } catch { /* ignore */ }
+        setImages(map); setApiError('');
+      } else setApiError('Failed to load NFT images');
+    } catch { setApiError('Network error: cannot connect to server'); }
   }, []);
 
   const loadInventory = useCallback(async () => {
@@ -98,16 +100,18 @@ export default function HomePage() {
     try {
       const res = await fetch(`/api/inventory?wallet=${wallet}&status=${inventoryFilter}`);
       const json = await res.json();
-      if (json.success) setInventory(json.data || []);
-    } catch { /* ignore */ }
+      if (json.success) { setInventory(json.data || []); setApiError(''); }
+      else setApiError('Failed to load inventory');
+    } catch { setApiError('Network error: cannot connect to server'); }
   }, [wallet, inventoryFilter]);
 
   const loadMarket = useCallback(async () => {
     try {
       const res = await fetch('/api/market');
       const json = await res.json();
-      if (json.success) setListings(json.data || []);
-    } catch { /* ignore */ }
+      if (json.success) { setListings(json.data || []); setApiError(''); }
+      else setApiError('Failed to load market listings');
+    } catch { setApiError('Network error: cannot connect to server'); }
   }, []);
 
   const loadReferral = useCallback(async () => {
@@ -115,8 +119,9 @@ export default function HomePage() {
     try {
       const res = await fetch(`/api/referral?wallet=${wallet}`);
       const json = await res.json();
-      if (json.success) setReferralData(json.data);
-    } catch { /* ignore */ }
+      if (json.success) { setReferralData(json.data); setApiError(''); }
+      else setApiError('Failed to load referral data');
+    } catch { setApiError('Network error: cannot connect to server'); }
   }, [wallet]);
 
   const [txHistory, setTxHistory] = useState<Array<Record<string, unknown>>>([]);
@@ -125,8 +130,9 @@ export default function HomePage() {
     try {
       const res = await fetch(`/api/transactions?wallet=${wallet}`);
       const json = await res.json();
-      if (json.success) setTxHistory(json.data || []);
-    } catch { /* ignore */ }
+      if (json.success) { setTxHistory(json.data || []); setApiError(''); }
+      else setApiError('Failed to load transaction history');
+    } catch { setApiError('Network error: cannot connect to server'); }
   };
 
   useEffect(() => { setMounted(true); }, []);
@@ -364,6 +370,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#0f0b1e] text-white">
+      {/* API Error Banner */}
+      {apiError && (
+        <div className="bg-red-600/90 text-white text-center py-2 px-4 text-sm flex items-center justify-center gap-2">
+          <span>{apiError}</span>
+          <button onClick={() => setApiError('')} className="text-white/80 hover:text-white text-lg leading-none">&times;</button>
+        </div>
+      )}
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#0f0b1e]/95 backdrop-blur border-b border-white/5">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">

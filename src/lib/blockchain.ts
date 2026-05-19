@@ -1,6 +1,4 @@
 import { ethers } from 'ethers';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // ============================================================
 // Server-side blockchain utilities for BSC chain operations
@@ -33,12 +31,29 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
-// Load YoumiPayoutPool contract ABI
-function getContractABI(): ethers.InterfaceAbi {
-  const artifactPath = path.join(process.cwd(), 'contracts', 'YoumiPayoutPool.json');
-  const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8'));
-  return artifact.abi;
-}
+// YoumiPayoutPool contract ABI — inlined for Vercel/Serverless compatibility
+// (fs.readFileSync fails on Vercel's read-only filesystem + contract file not in bundle)
+const YOUMI_PAYOUT_POOL_ABI: ethers.InterfaceAbi = [
+  {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"Deposited","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"string","name":"reason","type":"string"}],"name":"PayoutBNB","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":true,"internalType":"address","name":"token","type":"address"},{"indexed":false,"internalType":"string","name":"reason","type":"string"}],"name":"PayoutToken","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"WithdrawAllBNB","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":true,"internalType":"address","name":"token","type":"address"}],"name":"WithdrawAllToken","type":"event"},
+  {"stateMutability":"payable","type":"fallback"},
+  {"inputs":[{"internalType":"address[]","name":"recipients","type":"address[]"},{"internalType":"uint256[]","name":"amounts","type":"uint256[]"},{"internalType":"string","name":"reason","type":"string"}],"name":"batchPayoutBNB","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address[]","name":"recipients","type":"address[]"},{"internalType":"uint256[]","name":"amounts","type":"uint256[]"},{"internalType":"address","name":"token","type":"address"},{"internalType":"string","name":"reason","type":"string"}],"name":"batchPayoutToken","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"getBNBBalance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"getTokenBalance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"reason","type":"string"}],"name":"payoutBNB","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"address","name":"token","type":"address"},{"internalType":"string","name":"reason","type":"string"}],"name":"payoutToken","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"withdrawAllBNB","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"withdrawAllToken","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"stateMutability":"payable","type":"receive"}
+];
 
 function getProvider(): ethers.JsonRpcProvider {
   return new ethers.JsonRpcProvider(BSC_RPC);
@@ -77,8 +92,7 @@ export function getPlatformWalletAddress(): string | null {
  */
 function getPayoutContract(contractAddress: string): ethers.Contract {
   const signer = getPlatformSigner();
-  const abi = getContractABI();
-  return new ethers.Contract(contractAddress, abi, signer);
+  return new ethers.Contract(contractAddress, YOUMI_PAYOUT_POOL_ABI, signer);
 }
 
 // ============================================================
