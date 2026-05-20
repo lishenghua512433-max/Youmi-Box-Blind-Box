@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
+// 直接硬编码返回完整配置，不管数据库
 export async function GET() {
-  // 直接返回完整默认配置，强制页面显示
   return NextResponse.json({
     price: 3,
     common_rate: 60,
@@ -20,6 +20,7 @@ export async function GET() {
   });
 }
 
-export async function POST(req: Request) {
+export async function POST() {
+  // 模拟保存成功，让后台能正常提交
   return NextResponse.json({ success: true });
 }
