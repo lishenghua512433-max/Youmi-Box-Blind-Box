@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// 从环境变量读取Supabase配置
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// 从环境变量读取配置
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// GET：读取设置
+// 定义类型
+type SettingsKey = string;
+type SettingsValue = any;
+
+// GET：读取后台设置
 export async function GET() {
   try {
     const { data: settings, error } = await supabase
@@ -15,8 +19,8 @@ export async function GET() {
 
     if (error) throw error;
 
-    const result = {};
-    settings.forEach(item => {
+    const result: Record<SettingsKey, SettingsValue> = {};
+    settings?.forEach((item) => {
       result[item.key] = item.value;
     });
 
@@ -27,8 +31,8 @@ export async function GET() {
   }
 }
 
-// POST：保存设置
-export async function POST(req) {
+// POST：保存后台设置
+export async function POST(req: Request) {
   try {
     const body = await req.json();
     const updates = [];
