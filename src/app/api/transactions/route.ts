@@ -1,33 +1,30 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { createClient } from '@supabase/supabase-js';
 
-export async function GET(request: Request) {
+const supabaseUrl = "https://evxfedjqfdugwqbjrmew.supabase.co";
+const supabaseKey = "sb_publishable_rD4gfg85ACNOZiVdDzvkHw_1lLM9zW-";
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = new URL(req.url);
     const wallet = searchParams.get('wallet');
-    const type = searchParams.get('type');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
-    const client = getSupabaseClient();
-    let query = client
+    if (!wallet) {
+      return NextResponse.json([]);
+    }
+
+    const { data, error } = await supabase
       .from('transactions')
       .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      .eq('wallet_address', wallet)
+      .order('created_at', { ascending: false });
 
-    if (wallet) {
-      query = query.eq('wallet_address', wallet);
-    }
-    if (type && type !== 'all') {
-      query = query.eq('type', type);
-    }
+    if (error) throw error;
 
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(data || []);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    console.error('Transactions API Error:', err);
+    return NextResponse.json([], { status: 200 });
   }
 }
