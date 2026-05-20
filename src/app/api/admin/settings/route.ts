@@ -5,17 +5,62 @@ const supabaseUrl = "https://evxfedjqfdugwqbjrmew.supabase.co";
 const supabaseKey = "sb_publishable_rD4gfg85ACNOZiVdDzvkHw_1lLM9zW-";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// 定义兜底默认配置
+const defaultSettings = {
+  price: 3,
+  common_rate: 60,
+  rare_rate: 25,
+  epic_rate: 10,
+  legendary_rate: 4,
+  mythic_rate: 1,
+  recycle_common: 1,
+  recycle_rare: 3,
+  recycle_epic: 5,
+  recycle_legendary: 20,
+  recycle_mythic: 100,
+  trade_fee_rate: 5,
+  withdraw_fee_rate: 5,
+  recycle_fee_rate: 5
+};
+
 export async function GET() {
   try {
-    const { data: images, error } = await supabase
-      .from('nft_images')
-      .select('*');
+    const { data: settings, error } = await supabase
+      .from('admin_settings')
+      .select('key, value');
 
     if (error) throw error;
 
-    return NextResponse.json(images);
+    const result: Record<string, any> = { ...defaultSettings };
+    settings?.forEach((item) => {
+      result[item.key] = item.value;
+    });
+
+    return NextResponse.json(result);
   } catch (err) {
-    console.error('Images API Error:', err);
-    return NextResponse.json([], { status: 200 });
+    console.error('Settings API Error:', err);
+    // 数据库读取失败，直接返回默认配置，保证页面不报错
+    return NextResponse.json(defaultSettings);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const updates = [];
+
+    for (const key in body) {
+      updates.push(
+        supabase
+          .from('admin_settings')
+          .upsert({ key, value: body[key] })
+      );
+    }
+
+    await Promise.all(updates);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Save Settings Error:', err);
+    return NextResponse.json({ success: false }, { status: 500 });
   }
 }
