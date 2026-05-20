@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-// 直接硬编码返回完整配置，不管数据库
 export async function GET() {
   return NextResponse.json({
     price: 3,
@@ -21,6 +20,5 @@ export async function GET() {
 }
 
 export async function POST() {
-  // 模拟保存成功，让后台能正常提交
   return NextResponse.json({ success: true });
 }
