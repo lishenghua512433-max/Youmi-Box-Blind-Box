@@ -7,16 +7,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET() {
   try {
-    const { data: images, error } = await supabase
-      .from('nft_images')
-      .select('*');
-
+    const { data, error } = await supabase.from('nft_images').select('*');
     if (error) throw error;
-
-    return NextResponse.json(images);
+    return NextResponse.json(data || []);
   } catch (err) {
-    console.error('Images API Error:', err);
-    // 读取失败，返回空数组，不影响页面
     return NextResponse.json([], { status: 200 });
   }
 }
