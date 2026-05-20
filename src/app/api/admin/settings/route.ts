@@ -5,7 +5,7 @@ const supabaseUrl = "https://evxfedjqfdugwqbjrmew.supabase.co";
 const supabaseKey = "sb_publishable_rD4gfg85ACNOZiVdDzvkHw_1lLM9zW-";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 定义兜底默认配置
+// 完整的默认配置，前端表单靠这个渲染
 const defaultSettings = {
   price: 3,
   common_rate: 60,
@@ -31,7 +31,8 @@ export async function GET() {
 
     if (error) throw error;
 
-    const result: Record<string, any> = { ...defaultSettings };
+    // 把数据库数据和默认数据合并，保证前端一定能拿到完整数据
+    const result = { ...defaultSettings };
     settings?.forEach((item) => {
       result[item.key] = item.value;
     });
@@ -39,7 +40,7 @@ export async function GET() {
     return NextResponse.json(result);
   } catch (err) {
     console.error('Settings API Error:', err);
-    // 数据库读取失败，直接返回默认配置，保证页面不报错
+    // 数据库读取失败，直接返回完整的默认配置
     return NextResponse.json(defaultSettings);
   }
 }
