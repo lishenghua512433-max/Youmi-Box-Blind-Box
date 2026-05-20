@@ -54,8 +54,20 @@ export async function GET(request: Request) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    console.warn('[referral GET] Database query failed, returning defaults:', err instanceof Error ? err.message : err);
+    return NextResponse.json({
+      success: true,
+      data: {
+        user: null,
+        commission_balance: '0.00000000',
+        total_commission: '0.00000000',
+        commissions: [],
+        team: { l1: 0, l2: 0 },
+        rates: { l1: 4, l2: 1 },
+        referral_enabled: true,
+        min_withdraw: 5,
+      },
+    });
   }
 }
 

@@ -44,7 +44,12 @@ export async function POST(request: Request) {
     // Get settings
     const { data: settings, error: settingsError } = await client.from('admin_settings').select('*').eq('id', 1).maybeSingle();
     if (settingsError) throw new Error(settingsError.message);
-    if (!settings) throw new Error('Settings not found');
+    if (!settings) {
+      return NextResponse.json({
+        success: false,
+        error: 'Platform not configured. Please initialize settings in admin panel first.',
+      }, { status: 400 });
+    }
 
     const pricePerBox = parseFloat(settings.price_usdt as string);
     const totalPrice = pricePerBox * qty;
