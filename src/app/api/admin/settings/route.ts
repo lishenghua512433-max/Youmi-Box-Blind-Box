@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// 从环境变量读取配置
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+const supabaseUrl = "https://evxfedjqfdugwqbjrmew.supabase.co";
+const supabaseKey = "sb_publishable_rD4gfg85ACNOZiVdDzvkHw_1lLM9zW-";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 定义类型
-type SettingsKey = string;
-type SettingsValue = any;
-
-// GET：读取后台设置
 export async function GET() {
   try {
     const { data: settings, error } = await supabase
@@ -19,7 +13,7 @@ export async function GET() {
 
     if (error) throw error;
 
-    const result: Record<SettingsKey, SettingsValue> = {};
+    const result: Record<string, any> = {};
     settings?.forEach((item) => {
       result[item.key] = item.value;
     });
@@ -27,11 +21,25 @@ export async function GET() {
     return NextResponse.json(result);
   } catch (err) {
     console.error('Settings API Error:', err);
-    return NextResponse.json({}, { status: 200 });
+    return NextResponse.json({
+      price: 3,
+      common_rate: 60,
+      rare_rate: 25,
+      epic_rate: 10,
+      legendary_rate: 4,
+      mythic_rate: 1,
+      recycle_common: 1,
+      recycle_rare: 3,
+      recycle_epic: 5,
+      recycle_legendary: 20,
+      recycle_mythic: 100,
+      trade_fee_rate: 5,
+      withdraw_fee_rate: 5,
+      recycle_fee_rate: 5
+    });
   }
 }
 
-// POST：保存后台设置
 export async function POST(req: Request) {
   try {
     const body = await req.json();
