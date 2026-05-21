@@ -1,5 +1,5 @@
 {
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm install && next build",
+  "installCommand": "npm install --legacy-peer-deps --registry=https://registry.npmjs.org",
+  "buildCommand": "npm run build",
   "framework": "nextjs"
 }
