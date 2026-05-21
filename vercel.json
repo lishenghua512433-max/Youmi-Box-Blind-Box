@@ -1,0 +1,5 @@
+{
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm install && next build",
+  "framework": "nextjs"
+}
