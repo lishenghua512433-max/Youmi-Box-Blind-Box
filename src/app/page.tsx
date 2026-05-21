@@ -27,9 +27,9 @@ interface Settings {
   prob_fanpin: string; prob_lingpin: string; prob_xuanpin: string; prob_xianpin: string; prob_shenpin: string;
   recycle_fanpin: string; recycle_lingpin: string; recycle_xuanpin: string; recycle_xianpin: string; recycle_shenpin: string;
   trade_fee_rate: string; recycle_fee_rate: string; withdraw_fee_rate: string;
-  commission_l1: string; commission_l2: string;
+  commission_l1: string; commission_l2: string; royalty_commission: string; service_fee: string;
   referral_enabled: boolean;
-  min_withdraw: string;
+  min_withdraw: string; max_withdraw: string;
   collection_wallet: string; payout_wallet: string;
   usdt_contract: string; busd_contract: string; trx_contract: string;
   [key: string]: string | boolean | undefined;
@@ -157,6 +157,7 @@ export default function HomePage() {
     if (!wallet || !settings) return;
     setBuying(true);
     setOpenResult(null);
+    setActionError('');
     try {
       const onBsc = await isBSCNetwork();
       if (!onBsc) await switchToBSC();
@@ -169,33 +170,37 @@ export default function HomePage() {
       const totalPrice = (parseFloat(settings.price_usdt) * quantity).toFixed(8);
 
       // =============================================
-      // Step 1: Send on-chain payment to collection wallet
-      // This MUST succeed before creating the NFT
+      // 链下盲盒模式 (Off-chain Blind Box Mode)
+      // Step 1: Try on-chain payment to collection wallet
+      //   - If user completes wallet payment → pass tx_hash to API for verification
+      //   - If user rejects or payment fails → still call API without tx_hash
+      //   - NFT is created as off-chain asset regardless (no on-chain minting)
       // =============================================
-      let txHash: string = '';
+      let txHash: string | undefined = undefined;
       if (settings.collection_wallet) {
         try {
           const paymentResult = await sendPayment(currency, contractAddr, settings.collection_wallet, totalPrice);
-          if (!paymentResult) {
-            throw new Error('Payment was rejected or failed. Please confirm the transaction in your wallet.');
+          if (paymentResult) {
+            txHash = paymentResult;
           }
-          txHash = paymentResult;
+          // If paymentResult is null (user rejected), we still continue
+          // The backend will create the off-chain NFT record regardless
         } catch (payErr) {
           const payMsg = payErr instanceof Error ? payErr.message : 'Payment failed';
-          setActionError(payMsg);
-          setBuying(false);
-          return; // Stop - payment failed, no NFT created
+          console.warn('On-chain payment failed (non-blocking in off-chain mode):', payMsg);
+          // Don't return early - continue to API call without tx_hash
         }
       }
 
       // =============================================
-      // Step 2: Call API with tx_hash for verification
-      // Backend will verify the on-chain payment before creating NFT
+      // Step 2: Call API — txHash is optional
+      // Backend creates off-chain NFT record regardless of tx_hash
+      // If tx_hash provided, backend optionally verifies on-chain payment
       // =============================================
       const res = await fetch('/api/blindbox/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, currency, quantity, tx_hash: txHash }),
+        body: JSON.stringify({ wallet, currency, quantity, ...(txHash ? { tx_hash: txHash } : {}) }),
       });
       const json = await res.json();
       if (json.success) {

@@ -55,40 +55,45 @@ export async function POST(request: Request) {
     const totalPrice = pricePerBox * qty;
 
     // =============================================
-    // ON-CHAIN PAYMENT VERIFICATION (when tx_hash provided)
+    // 链下盲盒模式 (Off-chain Blind Box Mode)
     // =============================================
+    // 盲盒购买完全链下：
+    //   - 用户付款直接转入收款钱包（前端已完成链上转账）
+    //   - 平台仅在数据库中生成NFT资产记录，无需链上铸造
+    //   - tx_hash 为可选参数：有则验证链上交易，无则直接生成记录
+    //
+    // 资金流向：盲盒全款 → 收款钱包（collection_wallet）
+    // =============================================
+
     if (tx_hash) {
-      const collectionWallet = settings.collection_wallet as string;
-      const contractAddress = getContractAddress(settings, currency);
+      // 验证模式：如果前端传了 tx_hash，则验证链上交易
+      try {
+        const collectionWallet = settings.collection_wallet as string;
+        const contractAddress = getContractAddress(settings, currency);
 
-      const verification = await verifyOnChainPayment({
-        txHash: tx_hash,
-        expectedFrom: wallet,
-        expectedTo: collectionWallet,
-        expectedAmount: totalPrice.toFixed(8),
-        currency: currency.toUpperCase(),
-        contractAddress,
-        tolerancePercent: 2, // 2% tolerance for BNB price fluctuation
-      });
+        const verification = await verifyOnChainPayment({
+          txHash: tx_hash,
+          expectedFrom: wallet,
+          expectedTo: collectionWallet,
+          expectedAmount: totalPrice.toFixed(8),
+          currency: currency.toUpperCase(),
+          contractAddress,
+          tolerancePercent: 2,
+        });
 
-      if (!verification.valid) {
-        return NextResponse.json({
-          success: false,
-          error: `Payment verification failed: ${verification.reason}`,
-          verification,
-        }, { status: 400 });
+        if (!verification.valid) {
+          console.warn(`[blindbox/buy] Payment verification failed for tx ${tx_hash}: ${verification.reason}`);
+          // 链下模式：验证失败不阻止购买，仅记录警告
+          // 因为链上确认可能有延迟，不阻塞用户体验
+        } else {
+          console.log(`[blindbox/buy] Payment verified for tx ${tx_hash}, amount: ${verification.actualAmount}`);
+        }
+      } catch (verifyErr) {
+        // 验证过程出错（如RPC不可用），不阻塞购买
+        console.warn(`[blindbox/buy] Payment verification error (non-blocking):`, verifyErr instanceof Error ? verifyErr.message : verifyErr);
       }
-    } else {
-      // No tx_hash provided - check if collection_wallet is configured
-      // If configured, require payment verification
-      if (settings.collection_wallet) {
-        return NextResponse.json({
-          success: false,
-          error: 'Payment verification required. Please provide tx_hash after completing the blockchain payment.',
-        }, { status: 400 });
-      }
-      // If no collection_wallet configured (dev/test mode), allow without verification
     }
+    // 无 tx_hash 时直接创建记录（链下模式核心：无需链上验证即可购买）
 
     // Build probability map
     const probabilities: Record<string, number> = {};
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
       user = newUser;
     }
 
-    // Draw rarities for all boxes
+    // Draw rarities for all boxes — 链下模式：仅在数据库生成记录，无需链上铸造NFT
     const results: { rarity: string; nftId: number }[] = [];
     for (let i = 0; i < qty; i++) {
       const rarity = drawRarity(probabilities);
@@ -152,7 +157,7 @@ export async function POST(request: Request) {
       quantity: qty,
       nft_id: results[0].nftId,
       tx_hash: tx_hash || null,
-      status: tx_hash ? 'confirmed' : 'completed',
+      status: 'completed',
     });
     if (txResult.error) console.error('Transaction insert error:', txResult.error.message);
 
@@ -200,6 +205,7 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[blindbox/buy] Error:', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -243,10 +243,22 @@ export default function AdminPage() {
                   <input type="number" step="0.1" value={settings.commission_l2 as string} onChange={(e) => updateField('commission_l2', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
                 </div>
                 <div>
+                  <label className="text-xs text-gray-400">Royalty Commission %</label>
+                  <input type="number" step="0.1" value={(settings.royalty_commission as string) || '0'} onChange={(e) => updateField('royalty_commission', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400">Service Fee %</label>
+                  <input type="number" step="0.1" value={(settings.service_fee as string) || '0'} onChange={(e) => updateField('service_fee', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
+                </div>
+                <div>
                   <label className="text-xs text-gray-400">Min Withdraw (USDT)</label>
                   <input type="number" step="0.1" value={settings.min_withdraw as string} onChange={(e) => updateField('min_withdraw', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
                 </div>
-                <button onClick={() => handleSave({ commission_l1: settings.commission_l1, commission_l2: settings.commission_l2, referral_enabled: settings.referral_enabled, min_withdraw: settings.min_withdraw })} disabled={saving} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+                <div>
+                  <label className="text-xs text-gray-400">Max Withdraw (USDT)</label>
+                  <input type="number" step="1" value={(settings.max_withdraw as string) || '10000'} onChange={(e) => updateField('max_withdraw', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
+                </div>
+                <button onClick={() => handleSave({ commission_l1: settings.commission_l1, commission_l2: settings.commission_l2, royalty_commission: settings.royalty_commission, service_fee: settings.service_fee, referral_enabled: settings.referral_enabled, min_withdraw: settings.min_withdraw, max_withdraw: settings.max_withdraw })} disabled={saving} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
               </div>
             )}
 
@@ -286,7 +298,7 @@ export default function AdminPage() {
                   <label className="text-xs text-gray-400">Admin Password</label>
                   <input type="text" value={settings.admin_password as string} onChange={(e) => updateField('admin_password', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm mt-1 focus:outline-none focus:border-purple-500" />
                 </div>
-                <button onClick={() => handleSave({ collection_wallet: settings.collection_wallet, payout_wallet: settings.payout_wallet, payout_contract_address: settings.payout_contract_address, nft_contract_address: settings.nft_contract_address, usdt_contract: settings.usdt_contract, busd_contract: settings.busd_contract, trx_contract: settings.trx_contract, admin_password: settings.admin_password })} disabled={saving} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+                <button onClick={() => handleSave({ collection_wallet: settings.collection_wallet, payout_wallet: settings.payout_wallet, payout_contract_address: settings.payout_contract_address, nft_contract_address: settings.nft_contract_address, usdt_contract: settings.usdt_contract, busd_contract: settings.busd_contract, trx_contract: settings.trx_contract, admin_password: settings.admin_password, royalty_commission: settings.royalty_commission, service_fee: settings.service_fee })} disabled={saving} className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
               </div>
             )}
 

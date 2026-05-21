@@ -89,9 +89,11 @@ export async function POST(request: Request) {
     const { data: settings } = await client.from('admin_settings').select('*').eq('id', 1).maybeSingle();
     if (!settings) throw new Error('Settings not found');
 
-    // Check min withdrawal
+    // Check min/max withdrawal
     const minWithdraw = parseFloat(settings.min_withdraw);
+    const maxWithdraw = parseFloat((settings.max_withdraw as string) || '10000');
     if (balance < minWithdraw) throw new Error(`Minimum withdrawal is ${minWithdraw} USDT`);
+    if (balance > maxWithdraw) throw new Error(`Maximum single withdrawal is ${maxWithdraw} USDT. Please contact admin for larger amounts.`);
 
     // Check payout contract
     const payoutContractAddr = settings.payout_contract_address as string;
